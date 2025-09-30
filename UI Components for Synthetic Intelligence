@@ -1,0 +1,667 @@
+// src/components/SyntheticIntelligencePanel.tsx
+import React, { useState } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Tabs,
+  Tab,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Switch,
+  FormControlLabel,
+  Divider,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+  CircularProgress,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  IconButton,
+  Tooltip
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  PlayArrow as PlayIcon,
+  Download as DownloadIcon,
+  Upload as UploadIcon,
+  Settings as SettingsIcon,
+  ExpandMore as ExpandMoreIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+interface SyntheticDataConfig {
+  data_type: string;
+  size: number;
+  parameters: Record<string, any>;
+  noise_level: number;
+  seed?: number;
+}
+
+interface SimulationConfig {
+  simulation_type: string;
+  duration: number;
+  parameters: Record<string, any>;
+  initial_state?: Record<string, any>;
+}
+
+const SyntheticIntelligencePanel: React.FC = () => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [dataConfigs, setDataConfigs] = useState<SyntheticDataConfig[]>([]);
+  const [simulationConfigs, setSimulationConfigs] = useState<SimulationConfig[]>([]);
+  const [selectedDataType, setSelectedDataType] = useState('tabular');
+  const [selectedSimulationType, setSelectedSimulationType] = useState('quantum_circuit');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<any>(null);
+  const [simulationResult, setSimulationResult] = useState<any>(null);
+  const [supportedDataTypes, setSupportedDataTypes] = useState<string[]>([]);
+  const [supportedSimulationTypes, setSupportedSimulationTypes] = useState<string[]>([]);
+
+  // Fetch supported types on component mount
+  React.useEffect(() => {
+    // In a real app, this would be API calls
+    setSupportedDataTypes([
+      'tabular', 'time_series', 'image', 'text', 'graph', 'quantum_state'
+    ]);
+    setSupportedSimulationTypes([
+      'quantum_circuit', 'market_dynamics', 'biological_system', 'climate_model', 'network_traffic'
+    ]);
+  }, []);
+
+  const handleAddDataConfig = () => {
+    const newConfig: SyntheticDataConfig = {
+      data_type: selectedDataType,
+      size: 100,
+      parameters: getDefaultParameters(selectedDataType),
+      noise_level: 0.05
+    };
+    setDataConfigs([...dataConfigs, newConfig]);
+  };
+
+  const handleAddSimulationConfig = () => {
+    const newConfig: SimulationConfig = {
+      simulation_type: selectedSimulationType,
+      duration: 100,
+      parameters: getDefaultSimulationParameters(selectedSimulationType)
+    };
+    setSimulationConfigs([...simulationConfigs, newConfig]);
+  };
+
+  const getDefaultParameters = (dataType: string): Record<string, any> => {
+    switch (dataType) {
+      case 'tabular':
+        return { n_features: 10, n_classes: 2, task_type: 'classification' };
+      case 'time_series':
+        return { pattern_type: 'random_walk', seasonality: false, trend: false };
+      case 'image':
+        return { image_size: [64, 64], image_type: 'geometric' };
+      case 'text':
+        return { text_type: 'lorem_ipsum', min_length: 10, max_length: 100 };
+      case 'graph':
+        return { n_nodes: 10, graph_type: 'random', edge_probability: 0.2 };
+      case 'quantum_state':
+        return { n_qubits: 4, state_type: 'random' };
+      default:
+        return {};
+    }
+  };
+
+  const getDefaultSimulationParameters = (simulationType: string): Record<string, any> => {
+    switch (simulationType) {
+      case 'quantum_circuit':
+        return { n_qubits: 4, circuit_type: 'random', depth: 3, shots: 1000 };
+      case 'market_dynamics':
+        return { n_assets: 5, initial_prices: [100, 100, 100, 100, 100], volatility: 0.01 };
+      case 'biological_system':
+        return { system_type: 'gene_regulation', n_components: 10 };
+      case 'climate_model':
+        return { model_type: 'energy_balance', initial_temp: 15.0 };
+      case 'network_traffic':
+        return { n_nodes: 10, topology: 'random', traffic_intensity: 0.5 };
+      default:
+        return {};
+    }
+  };
+
+  const handleGenerateData = async () => {
+    if (dataConfigs.length === 0) return;
+    
+    setIsGenerating(true);
+    setGenerationResult(null);
+    
+    try {
+      // In a real app, this would be an API call
+      // const response = await fetch('/api/v1/synthetic-intelligence/create-dataset', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ configs: dataConfigs })
+      // });
+      // const result = await response.json();
+      
+      // Mock result for demonstration
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const result = {
+        status: "success",
+        result: {
+          dataset: {
+            "synthetic_data_0": { shape: [100, 11] },
+            "synthetic_data_1": { shape: [100, 11] }
+          },
+          num_configs: dataConfigs.length
+        }
+      };
+      
+      setGenerationResult(result);
+    } catch (error) {
+      setGenerationResult({
+        status: "error",
+        error: "Failed to generate synthetic data"
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleRunSimulation = async () => {
+    if (simulationConfigs.length === 0) return;
+    
+    setIsGenerating(true);
+    setSimulationResult(null);
+    
+    try {
+      // In a real app, this would be an API call
+      // const response = await fetch('/api/v1/synthetic-intelligence/run-multi-simulation', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ configs: simulationConfigs })
+      // });
+      // const result = await response.json();
+      
+      // Mock result for demonstration
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Generate mock simulation data
+      const simulationData = simulationConfigs.map((config, index) => {
+        const data = [];
+        for (let i = 0; i < config.duration; i++) {
+          data.push({
+            time: i,
+            value: Math.sin(i * 0.1) + Math.random() * 0.2
+          });
+        }
+        return {
+          name: `Simulation ${index + 1}`,
+          data: data
+        };
+      });
+      
+      setSimulationResult({
+        status: "success",
+        result: {
+          simulation_results: simulationData,
+          num_configs: simulationConfigs.length
+        }
+      });
+    } catch (error) {
+      setSimulationResult({
+        status: "error",
+        error: "Failed to run simulation"
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const renderDataConfigForm = (config: SyntheticDataConfig, index: number) => (
+    <Card key={index} sx={{ mb: 2 }}>
+      <CardContent>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Data Type</InputLabel>
+              <Select
+                value={config.data_type}
+                onChange={(e) => {
+                  const newConfigs = [...dataConfigs];
+                  newConfigs[index] = {
+                    ...config,
+                    data_type: e.target.value,
+                    parameters: getDefaultParameters(e.target.value)
+                  };
+                  setDataConfigs(newConfigs);
+                }}
+              >
+                {supportedDataTypes.map(type => (
+                  <MenuItem key={type} value={type}>
+                    {type.replace('_', ' ').toUpperCase()}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Size"
+              type="number"
+              value={config.size}
+              onChange={(e) => {
+                const newConfigs = [...dataConfigs];
+                newConfigs[index] = { ...config, size: parseInt(e.target.value) };
+                setDataConfigs(newConfigs);
+              }}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Noise Level"
+              type="number"
+              inputProps={{ step: 0.01, min: 0, max: 1 }}
+              value={config.noise_level}
+              onChange={(e) => {
+                const newConfigs = [...dataConfigs];
+                newConfigs[index] = { ...config, noise_level: parseFloat(e.target.value) };
+                setDataConfigs(newConfigs);
+              }}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Seed (optional)"
+              type="number"
+              value={config.seed || ''}
+              onChange={(e) => {
+                const newConfigs = [...dataConfigs];
+                newConfigs[index] = { 
+                  ...config, 
+                  seed: e.target.value ? parseInt(e.target.value) : undefined 
+                };
+                setDataConfigs(newConfigs);
+              }}
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Advanced Parameters</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <TextField
+                  fullWidth
+                  label="Parameters (JSON)"
+                  multiline
+                  rows={4}
+                  value={JSON.stringify(config.parameters, null, 2)}
+                  onChange={(e) => {
+                    try {
+                      const newConfigs = [...dataConfigs];
+                      newConfigs[index] = { 
+                        ...config, 
+                        parameters: JSON.parse(e.target.value) 
+                      };
+                      setDataConfigs(newConfigs);
+                    } catch (error) {
+                      // Handle JSON parse error
+                    }
+                  }}
+                />
+              </AccordionDetails>
+            </Accordion>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => {
+                const newConfigs = [...dataConfigs];
+                newConfigs.splice(index, 1);
+                setDataConfigs(newConfigs);
+              }}
+            >
+              Remove
+            </Button>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+
+  const renderSimulationConfigForm = (config: SimulationConfig, index: number) => (
+    <Card key={index} sx={{ mb: 2 }}>
+      <CardContent>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Simulation Type</InputLabel>
+              <Select
+                value={config.simulation_type}
+                onChange={(e) => {
+                  const newConfigs = [...simulationConfigs];
+                  newConfigs[index] = {
+                    ...config,
+                    simulation_type: e.target.value,
+                    parameters: getDefaultSimulationParameters(e.target.value)
+                  };
+                  setSimulationConfigs(newConfigs);
+                }}
+              >
+                {supportedSimulationTypes.map(type => (
+                  <MenuItem key={type} value={type}>
+                    {type.replace('_', ' ').toUpperCase()}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Duration"
+              type="number"
+              value={config.duration}
+              onChange={(e) => {
+                const newConfigs = [...simulationConfigs];
+                newConfigs[index] = { ...config, duration: parseInt(e.target.value) };
+                setSimulationConfigs(newConfigs);
+              }}
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Simulation Parameters</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <TextField
+                  fullWidth
+                  label="Parameters (JSON)"
+                  multiline
+                  rows={4}
+                  value={JSON.stringify(config.parameters, null, 2)}
+                  onChange={(e) => {
+                    try {
+                      const newConfigs = [...simulationConfigs];
+                      newConfigs[index] = { 
+                        ...config, 
+                        parameters: JSON.parse(e.target.value) 
+                      };
+                      setSimulationConfigs(newConfigs);
+                    } catch (error) {
+                      // Handle JSON parse error
+                    }
+                  }}
+                />
+              </AccordionDetails>
+            </Accordion>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => {
+                const newConfigs = [...simulationConfigs];
+                newConfigs.splice(index, 1);
+                setSimulationConfigs(newConfigs);
+              }}
+            >
+              Remove
+            </Button>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        Synthetic Intelligence
+      </Typography>
+      
+      <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+        <Tab label="Data Generation" />
+        <Tab label="Simulation" />
+      </Tabs>
+      
+      <Box sx={{ mt: 2 }}>
+        {activeTab === 0 && (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Data Type</InputLabel>
+                <Select
+                  value={selectedDataType}
+                  onChange={(e) => setSelectedDataType(e.target.value)}
+                >
+                  {supportedDataTypes.map(type => (
+                    <MenuItem key={type} value={type}>
+                      {type.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAddDataConfig}
+              >
+                Add Data Config
+              </Button>
+            </Box>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            {dataConfigs.map((config, index) => renderDataConfigForm(config, index))}
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+              <Button
+                variant="contained"
+                startIcon={<PlayIcon />}
+                onClick={handleGenerateData}
+                disabled={dataConfigs.length === 0 || isGenerating}
+              >
+                Generate Data
+              </Button>
+              
+              <Button
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                onClick={() => {
+                  // In a real app, this would open a file dialog
+                }}
+              >
+                Upload Config
+              </Button>
+            </Box>
+            
+            {isGenerating && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <CircularProgress />
+              </Box>
+            )}
+            
+            {generationResult && (
+              <Box sx={{ mt: 2 }}>
+                <Alert 
+                  severity={generationResult.status === "success" ? "success" : "error"}
+                  sx={{ mb: 2 }}
+                >
+                  {generationResult.status === "success" 
+                    ? "Data generated successfully!" 
+                    : generationResult.error
+                  }
+                </Alert>
+                
+                {generationResult.status === "success" && (
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Generated Dataset
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {Object.entries(generationResult.result.dataset).map(([key, value]) => (
+                          <Grid item xs={12} sm={6} key={key}>
+                            <Chip 
+                              label={`${key}: ${value.shape.join(' x ')}`} 
+                              color="primary"
+                            />
+                          </Grid>
+                        ))}
+                      </Grid>
+                      
+                      <Box sx={{ mt: 2 }}>
+                        <Button
+                          variant="outlined"
+                          startIcon={<DownloadIcon />}
+                        >
+                          Download Dataset
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                )}
+              </Box>
+            )}
+          </>
+        )}
+        
+        {activeTab === 1 && (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Simulation Type</InputLabel>
+                <Select
+                  value={selectedSimulationType}
+                  onChange={(e) => setSelectedSimulationType(e.target.value)}
+                >
+                  {supportedSimulationTypes.map(type => (
+                    <MenuItem key={type} value={type}>
+                      {type.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAddSimulationConfig}
+              >
+                Add Simulation Config
+              </Button>
+            </Box>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            {simulationConfigs.map((config, index) => renderSimulationConfigForm(config, index))}
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+              <Button
+                variant="contained"
+                startIcon={<PlayIcon />}
+                onClick={handleRunSimulation}
+                disabled={simulationConfigs.length === 0 || isGenerating}
+              >
+                Run Simulation
+              </Button>
+              
+              <Button
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                onClick={() => {
+                  // In a real app, this would open a file dialog
+                }}
+              >
+                Upload Config
+              </Button>
+            </Box>
+            
+            {isGenerating && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <CircularProgress />
+              </Box>
+            )}
+            
+            {simulationResult && (
+              <Box sx={{ mt: 2 }}>
+                <Alert 
+                  severity={simulationResult.status === "success" ? "success" : "error"}
+                  sx={{ mb: 2 }}
+                >
+                  {simulationResult.status === "success" 
+                    ? "Simulation completed successfully!" 
+                    : simulationResult.error
+                  }
+                </Alert>
+                
+                {simulationResult.status === "success" && (
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Simulation Results
+                      </Typography>
+                      
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            {simulationResult.result.simulation_results.map((sim: any, index: number) => (
+                              <Line
+                                key={index}
+                                type="monotone"
+                                dataKey="value"
+                                data={sim.data}
+                                stroke={`hsl(${index * 60}, 70%, 50%)`}
+                                name={sim.name}
+                              />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Box>
+                      
+                      <Box sx={{ mt: 2 }}>
+                        <Button
+                          variant="outlined"
+                          startIcon={<DownloadIcon />}
+                        >
+                          Download Results
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                )}
+              </Box>
+            )}
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+export default SyntheticIntelligencePanel;
