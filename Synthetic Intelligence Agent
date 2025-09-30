@@ -1,0 +1,152 @@
+# agents/synthetic_intelligence_agent.py
+import asyncio
+import logging
+from typing import Dict, Any, List, Optional
+from ..base_agent import BaseAgent
+from ..synthetic_intelligence.si_core import (
+    si_core, SyntheticDataConfig, SimulationConfig, 
+    SyntheticDataType, SimulationType
+)
+
+logger = logging.getLogger(__name__)
+
+class SyntheticIntelligenceAgent(BaseAgent):
+    def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        task_type = task.get('task_type')
+        
+        if task_type == 'generate_data':
+            return self.generate_synthetic_data(task)
+        elif task_type == 'run_simulation':
+            return self.run_synthetic_simulation(task)
+        elif task_type == 'create_synthetic_dataset':
+            return self.create_synthetic_dataset(task)
+        elif task_type == 'run_multi_simulation':
+            return self.run_multi_simulation(task)
+        else:
+            return self.create_result(
+                status="error",
+                error=f"Unsupported task type: {task_type}"
+            )
+    
+    def generate_synthetic_data(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        data_type = SyntheticDataType(task.get('data_type', 'tabular'))
+        size = task.get('size', 100)
+        parameters = task.get('parameters', {})
+        noise_level = task.get('noise_level', 0.05)
+        seed = task.get('seed')
+        
+        config = SyntheticDataConfig(
+            data_type=data_type,
+            size=size,
+            parameters=parameters,
+            noise_level=noise_level,
+            seed=seed
+        )
+        
+        try:
+            data = si_core.generate_data(config)
+            return self.create_result(
+                status="success",
+                result={
+                    "data": data,
+                    "data_type": data_type.value,
+                    "size": size,
+                    "parameters": parameters
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error generating synthetic data: {str(e)}")
+            return self.create_result(
+                status="error",
+                error=str(e)
+            )
+    
+    def run_synthetic_simulation(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        simulation_type = SimulationType(task.get('simulation_type', 'quantum_circuit'))
+        duration = task.get('duration', 100)
+        parameters = task.get('parameters', {})
+        initial_state = task.get('initial_state')
+        
+        config = SimulationConfig(
+            simulation_type=simulation_type,
+            duration=duration,
+            parameters=parameters,
+            initial_state=initial_state
+        )
+        
+        try:
+            result = si_core.run_simulation(config)
+            return self.create_result(
+                status="success",
+                result={
+                    "simulation_result": result,
+                    "simulation_type": simulation_type.value,
+                    "duration": duration,
+                    "parameters": parameters
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error running synthetic simulation: {str(e)}")
+            return self.create_result(
+                status="error",
+                error=str(e)
+            )
+    
+    def create_synthetic_dataset(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        configs = task.get('configs', [])
+        
+        if not configs:
+            return self.create_result(
+                status="error",
+                error="No data generation configs provided"
+            )
+        
+        try:
+            dataset = si_core.create_synthetic_dataset(configs)
+            return self.create_result(
+                status="success",
+                result={
+                    "dataset": dataset,
+                    "num_configs": len(configs)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error creating synthetic dataset: {str(e)}")
+            return self.create_result(
+                status="error",
+                error=str(e)
+            )
+    
+    def run_multi_simulation(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        configs = task.get('configs', [])
+        
+        if not configs:
+            return self.create_result(
+                status="error",
+                error="No simulation configs provided"
+            )
+        
+        try:
+            results = si_core.run_multi_simulation(configs)
+            return self.create_result(
+                status="success",
+                result={
+                    "simulation_results": results,
+                    "num_configs": len(configs)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error running multi-simulation: {str(e)}")
+            return self.create_result(
+                status="error",
+                error=str(e)
+            )
+    
+    def get_supported_data_types(self) -> List[str]:
+        return [dt.value for dt in SyntheticDataType]
+    
+    def get_supported_simulation_types(self) -> List[str]:
+        return [st.value for st in SimulationType]
+    
+    def get_required_fields(self) -> List[str]:
+        return ["task_type"]
