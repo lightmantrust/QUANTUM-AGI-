@@ -1,0 +1,107 @@
+// src/components/OnboardingTour.tsx
+import React, { useState } from 'react';
+import { 
+  Box, 
+  Button, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  DialogActions, 
+  Typography, 
+  Stepper, 
+  Step, 
+  StepLabel,
+  Paper,
+  IconButton
+} from '@mui/material';
+import { Close as CloseIcon } from '@mui/icons-material';
+
+const OnboardingTour = ({ open, onClose }) => {
+  const [activeStep, setActiveStep] = useState(0);
+  
+  const steps = [
+    {
+      title: 'Welcome to Quantum AI-Hybrid',
+      content: 'This platform allows you to design, build, and deploy quantum-AI hybrid systems with no code required.'
+    },
+    {
+      title: 'Create Your First Project',
+      content: 'Start by creating a new project. Give it a name and description to help you organize your work.'
+    },
+    {
+      title: 'Design Your System',
+      content: 'Use the drag-and-drop interface to design your quantum-AI system. Choose from various components and connect them.'
+    },
+    {
+      title: 'Deploy and Monitor',
+      content: 'Once your system is designed, deploy it to your preferred environment and monitor its performance.'
+    }
+  ];
+
+  const handleNext = () => {
+    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+  };
+
+  const handleBack = () => {
+    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+  };
+
+  const handleFinish = () => {
+    onClose();
+    setActiveStep(0);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Getting Started</Typography>
+        <IconButton onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      
+      <DialogContent>
+        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+          {steps.map((step, index) => (
+            <Step key={index}>
+              <StepLabel>{step.title}</StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+        
+        <Paper sx={{ p: 3, mb: 2 }}>
+          <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
+            {steps[activeStep].title}
+          </Typography>
+          <Typography variant="body1">
+            {steps[activeStep].content}
+          </Typography>
+        </Paper>
+      </DialogContent>
+      
+      <DialogActions>
+        <Button 
+          disabled={activeStep === 0} 
+          onClick={handleBack}
+        >
+          Back
+        </Button>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button onClick={onClose}>
+          Skip Tour
+        </Button>
+        {activeStep === steps.length - 1 ? (
+          <Button variant="contained" onClick={handleFinish}>
+            Finish
+          </Button>
+        ) : (
+          <Button variant="contained" onClick={handleNext}>
+            Next
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default OnboardingTour;
