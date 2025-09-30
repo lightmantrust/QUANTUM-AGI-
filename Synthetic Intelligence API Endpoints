@@ -1,0 +1,141 @@
+# api/routes/synthetic_intelligence.py
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import List, Dict, Any, Optional
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import json
+import io
+
+from database import get_db
+from agents.synthetic_intelligence_agent import SyntheticIntelligenceAgent
+from agents.registry import agent_registry
+
+router = APIRouter()
+
+class SyntheticDataRequest(BaseModel):
+    data_type: str
+    size: int = 100
+    parameters: Dict[str, Any] = {}
+    noise_level: float = 0.05
+    seed: Optional[int] = None
+
+class SimulationRequest(BaseModel):
+    simulation_type: str
+    duration: int = 100
+    parameters: Dict[str, Any] = {}
+    initial_state: Optional[Dict[str, Any]] = None
+
+class SyntheticDatasetRequest(BaseModel):
+    configs: List[Dict[str, Any]]
+
+class MultiSimulationRequest(BaseModel):
+    configs: List[Dict[str, Any]]
+
+@router.post("/generate-data")
+async def generate_synthetic_data(request: SyntheticDataRequest):
+    try:
+        agent = SyntheticIntelligenceAgent({})
+        result = agent.generate_synthetic_data({
+            "task_type": "generate_data",
+            "data_type": request.data_type,
+            "size": request.size,
+            "parameters": request.parameters,
+            "noise_level": request.noise_level,
+            "seed": request.seed
+        })
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/run-simulation")
+async def run_synthetic_simulation(request: SimulationRequest):
+    try:
+        agent = SyntheticIntelligenceAgent({})
+        result = agent.run_synthetic_simulation({
+            "task_type": "run_simulation",
+            "simulation_type": request.simulation_type,
+            "duration": request.duration,
+            "parameters": request.parameters,
+            "initial_state": request.initial_state
+        })
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/create-dataset")
+async def create_synthetic_dataset(request: SyntheticDatasetRequest):
+    try:
+        agent = SyntheticIntelligenceAgent({})
+        result = agent.create_synthetic_dataset({
+            "task_type": "create_synthetic_dataset",
+            "configs": request.configs
+        })
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/run-multi-simulation")
+async def run_multi_simulation(request: MultiSimulationRequest):
+    try:
+        agent = SyntheticIntelligenceAgent({})
+        result = agent.run_multi_simulation({
+            "task_type": "run_multi_simulation",
+            "configs": request.configs
+        })
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/supported-data-types")
+async def get_supported_data_types():
+    agent = SyntheticIntelligenceAgent({})
+    return {"data_types": agent.get_supported_data_types()}
+
+@router.get("/supported-simulation-types")
+async def get_supported_simulation_types():
+    agent = SyntheticIntelligenceAgent({})
+    return {"simulation_types": agent.get_supported_simulation_types()}
+
+@router.post("/upload-data-config")
+async def upload_data_config(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        config = json.loads(contents)
+        
+        # Validate config
+        if "data_type" not in config:
+            raise HTTPException(status_code=400, detail="Missing required field: data_type")
+        
+        return {"message": "Data config uploaded successfully", "config": config}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/upload-simulation-config")
+async def upload_simulation_config(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        config = json.loads(contents)
+        
+        # Validate config
+        if "simulation_type" not in config:
+            raise HTTPException(status_code=400, detail="Missing required field: simulation_type")
+        
+        return {"message": "Simulation config uploaded successfully", "config": config}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
