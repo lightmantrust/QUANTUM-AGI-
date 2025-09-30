@@ -1,0 +1,226 @@
+// src/components/SystemDesignerEnhanced.tsx
+import React, { useState, useCallback } from 'react';
+import { 
+  Box, 
+  Paper, 
+  Typography, 
+  Button, 
+  Grid, 
+  TextField, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  DialogActions,
+  Drawer,
+  IconButton,
+  Fab,
+  Tooltip,
+  useTheme,
+  useMediaQuery,
+  Alert,
+  Snackbar,
+  Zoom,
+  Tabs,
+  Tab
+} from '@mui/material';
+import { 
+  Save as SaveIcon,
+  PlayArrow as PlayIcon,
+  Delete as DeleteIcon,
+  Settings as SettingsIcon,
+  Add as AddIcon,
+  Close as CloseIcon,
+  DragIndicator as DragIcon,
+  Link as LinkIcon,
+  Info as InfoIcon,
+  Science as ScienceIcon,
+  DataObject as DataObjectIcon
+} from '@mui/icons-material';
+import { useDrag, useDrop, DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { useDispatch, useSelector } from 'react-redux';
+import { createProject, updateProject } from '../store/projectsSlice';
+import { executeAgent } from '../store/agentsSlice';
+import { motion, AnimatePresence } from 'framer-motion';
+import { v4 as uuidv4 } from 'uuid';
+import SyntheticIntelligencePanel from './SyntheticIntelligencePanel';
+
+// ... (Keep existing code for ComponentItem, DesignerCanvas, DraggableComponent, etc.)
+
+export const SystemDesignerEnhanced: React.FC = () => {
+  // ... (Keep existing state variables)
+  const [siPanelOpen, setSiPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+
+  // ... (Keep existing functions)
+
+  const componentCategories = [
+    // ... (Keep existing categories)
+    {
+      name: 'Synthetic Intelligence',
+      components: [
+        { type: 'synthetic_data_generator', name: 'Synthetic Data', icon: '📊', description: 'Generate synthetic data', category: 'Synthetic Intelligence' },
+        { type: 'simulation_engine', name: 'Simulation Engine', icon: '🔬', description: 'Run simulations', category: 'Synthetic Intelligence' },
+        { type: 'quantum_simulator', name: 'Quantum Simulator', icon: '⚛️', description: 'Simulate quantum systems', category: 'Synthetic Intelligence' },
+      ]
+    }
+    // ... (Keep other categories)
+  ];
+
+  // ... (Keep existing functions)
+
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
+        {/* Component Drawer */}
+        <Drawer
+          anchor="left"
+          open={componentDrawerOpen}
+          onClose={() => setComponentDrawerOpen(false)}
+          variant={isMobile ? 'temporary' : 'persistent'}
+          sx={{
+            width: 280,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 280,
+              boxSizing: 'border-box',
+              borderRight: '1px solid',
+              borderColor: 'divider',
+              top: 64,
+              height: 'calc(100% - 64px)'
+            },
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Components</Typography>
+              {isMobile && (
+                <IconButton onClick={() => setComponentDrawerOpen(false)}>
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </Box>
+            
+            {/* ... (Keep existing component categories) */}
+            
+            {componentCategories.map((category) => (
+              <Box key={category.name} sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" color="textSecondary" sx={{ mb: 1 }}>
+                  {category.name}
+                </Typography>
+                {category.components.map((comp) => (
+                  <ComponentItem
+                    key={comp.type}
+                    type={comp.type}
+                    name={comp.name}
+                    icon={comp.icon}
+                    description={comp.description}
+                    category={comp.category}
+                  />
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Drawer>
+
+        {/* Main Content */}
+        <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+          {/* Toolbar */}
+          <Box sx={{ 
+            p: 2, 
+            borderBottom: '1px solid', 
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {!isMobile && (
+                <IconButton onClick={() => setComponentDrawerOpen(!componentDrawerOpen)}>
+                  <DragIcon />
+                </IconButton>
+              )}
+              <Typography variant="h6">System Designer</Typography>
+            </Box>
+            
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                variant="outlined" 
+                startIcon={<ScienceIcon />}
+                onClick={() => setSiPanelOpen(true)}
+              >
+                Synthetic Intelligence
+              </Button>
+              {/* ... (Keep existing buttons) */}
+            </Box>
+          </Box>
+
+          {/* Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+              <Tab label="Designer" />
+              <Tab label="Synthetic Intelligence" />
+            </Tabs>
+          </Box>
+
+          {/* Tab Content */}
+          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+            {activeTab === 0 ? (
+              // Keep existing designer content
+              <DesignerCanvas
+                components={components}
+                connections={connections}
+                onMoveComponent={handleMoveComponent}
+                onAddComponent={handleAddComponent}
+                onComponentClick={handleComponentClick}
+                onAddConnection={handleAddConnection}
+                onDeleteComponent={handleDeleteComponent}
+                onDeleteConnection={handleDeleteConnection}
+                selectedComponent={selectedComponent}
+                selectedConnection={selectedConnection}
+              />
+            ) : (
+              <SyntheticIntelligencePanel />
+            )}
+          </Box>
+
+          {/* ... (Keep existing Component Configuration Panel, dialogs, etc.) */}
+        </Box>
+
+        {/* ... (Keep existing Floating Action Button for mobile) */}
+
+        {/* Synthetic Intelligence Panel Drawer */}
+        <Drawer
+          anchor="right"
+          open={siPanelOpen}
+          onClose={() => setSiPanelOpen(false)}
+          sx={{
+            width: 600,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 600,
+              boxSizing: 'border-box',
+              borderLeft: '1px solid',
+              borderColor: 'divider',
+              top: 64,
+              height: 'calc(100% - 64px)'
+            },
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Synthetic Intelligence</Typography>
+              <IconButton onClick={() => setSiPanelOpen(false)}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
+            
+            <SyntheticIntelligencePanel />
+          </Box>
+        </Drawer>
+
+        {/* ... (Keep existing dialogs, snackbar, etc.) */}
+      </Box>
+    </DndProvider>
+  );
+};
