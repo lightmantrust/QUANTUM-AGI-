@@ -1,0 +1,1022 @@
+// src/components/SystemDesigner.tsx
+import React, { useState, useCallback, useRef } from 'react';
+import { 
+  Box, 
+  Paper, 
+  Typography, 
+  Button, 
+  Grid, 
+  TextField, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  DialogActions,
+  Drawer,
+  IconButton,
+  Fab,
+  Tooltip,
+  useTheme,
+  useMediaQuery,
+  Alert,
+  Snackbar,
+  Zoom
+} from '@mui/material';
+import { 
+  Save as SaveIcon,
+  PlayArrow as PlayIcon,
+  Delete as DeleteIcon,
+  Settings as SettingsIcon,
+  Add as AddIcon,
+  Close as CloseIcon,
+  DragIndicator as DragIcon,
+  Link as LinkIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+import { useDrag, useDrop, DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { useDispatch, useSelector } from 'react-redux';
+import { createProject, updateProject } from '../store/projectsSlice';
+import { executeAgent } from '../store/agentsSlice';
+import { motion, AnimatePresence } from 'framer-motion';
+import { v4 as uuidv4 } from 'uuid';
+
+interface Component {
+  id: string;
+  name: string;
+  type: string;
+  x: number;
+  y: number;
+  config: Record<string, any>;
+  inputs: string[];
+  outputs: string[];
+}
+
+interface Connection {
+  id: string;
+  from: string;
+  to: string;
+  fromOutput: string;
+  toInput: string;
+}
+
+interface ComponentItemProps {
+  type: string;
+  name: string;
+  icon: string;
+  description: string;
+  category: string;
+}
+
+const ComponentItem: React.FC<ComponentItemProps> = ({ type, name, icon, description, category }) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'component',
+    item: { type, name, category },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
+
+  return (
+    <Paper
+      ref={drag}
+      sx={{
+        p: 2,
+        mb: 1,
+        cursor: 'move',
+        opacity: isDragging ? 0.5 : 1,
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 1,
+        transition: 'all 0.2s',
+        '&:hover': {
+          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+          transform: 'translateY(-2px)'
+        }
+      }}
+    >
+      <Box sx={{ fontSize: '2rem' }}>{icon}</Box>
+      <Typography variant="body2" fontWeight="medium">{name}</Typography>
+      <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.75rem' }}>
+        {description}
+      </Typography>
+    </Paper>
+  );
+};
+
+interface DesignerCanvasProps {
+  components: Component[];
+  connections: Connection[];
+  onMoveComponent: (id: string, x: number, y: number) => void;
+  onAddComponent: (type: string, x: number, y: number) => void;
+  onComponentClick: (component: Component) => void;
+  onAddConnection: (from: string, to: string, fromOutput: string, toInput: string) => void;
+  onDeleteComponent: (id: string) => void;
+  onDeleteConnection: (id: string) => void;
+  selectedComponent: Component | null;
+  selectedConnection: Connection | null;
+}
+
+const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ 
+  components, 
+  connections, 
+  onMoveComponent, 
+  onAddComponent,
+  onComponentClick,
+  onAddConnection,
+  onDeleteComponent,
+  onDeleteConnection,
+  selectedComponent,
+  selectedConnection
+}) => {
+  const canvasRef = useRef(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionStart, setConnectionStart] = useState<{componentId: string, output: string} | null>(null);
+  
+  const [, drop] = useDrop(() => ({
+    accept: 'component',
+    drop: (item: { type: string; name: string }, monitor) => {
+      const delta = monitor.getDifferenceFromInitialOffset();
+      if (delta) {
+        const x = Math.round(monitor.getInitialSourceClientOffset()!.x + delta.x);
+        const y = Math.round(monitor.getInitialSourceClientOffset()!.y + delta.y);
+        onAddComponent(item.type, x, y);
+      }
+      return undefined;
+    },
+  }));
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    // Deselect if clicking on empty canvas
+    if (e.target === canvasRef.current) {
+      // This would be handled by the parent component
+    }
+  };
+
+  const handleOutputClick = (componentId: string, output: string) => {
+    if (!isConnecting) {
+      setIsConnecting(true);
+      setConnectionStart({ componentId, output });
+    } else if (connectionStart && connectionStart.componentId !== componentId) {
+      // Complete the connection
+      // In a real implementation, you'd need to select an input on the target component
+      setIsConnecting(false);
+      setConnectionStart(null);
+    }
+  };
+
+  const handleInputClick = (componentId: string, input: string) => {
+    if (isConnecting && connectionStart) {
+      onAddConnection(connectionStart.componentId, componentId, connectionStart.output, input);
+      setIsConnecting(false);
+      setConnectionStart(null);
+    }
+  };
+
+  return (
+    <Box
+      ref={(node) => {
+        drop(node);
+        if (node) canvasRef.current = node;
+      }}
+      onClick={handleCanvasClick}
+      sx={{
+        height: 600,
+        position: 'relative',
+        border: '2px dashed #ccc',
+        borderRadius: 2,
+        overflow: 'hidden',
+        backgroundColor: '#fafafa',
+        backgroundImage: 'radial-gradient(circle, #e0e0e0 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+        cursor: isConnecting ? 'crosshair' : 'default'
+      }}
+    >
+      {/* Connection lines */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+        {connections.map((conn) => {
+          const fromComp = components.find(c => c.id === conn.from);
+          const toComp = components.find(c => c.id === conn.to);
+          
+          if (!fromComp || !toComp) return null;
+          
+          const fromX = fromComp.x + 150; // Component width / 2
+          const fromY = fromComp.y + 75; // Component height / 2
+          const toX = toComp.x + 150;
+          const toY = toComp.y + 75;
+          
+          return (
+            <line
+              key={conn.id}
+              x1={fromX}
+              y1={fromY}
+              x2={toX}
+              y2={toY}
+              stroke={selectedConnection?.id === conn.id ? '#3b5bdb' : '#339af0'}
+              strokeWidth={selectedConnection?.id === conn.id ? 3 : 2}
+              markerEnd="url(#arrowhead)"
+            />
+          );
+        })}
+        <defs>
+          <marker
+            id="arrowhead"
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="#339af0" />
+          </marker>
+        </defs>
+      </svg>
+      
+      {/* Components */}
+      {components.map((comp) => (
+        <DraggableComponent
+          key={comp.id}
+          component={comp}
+          onMove={onMoveComponent}
+          onClick={onComponentClick}
+          onDelete={onDeleteComponent}
+          onOutputClick={handleOutputClick}
+          onInputClick={handleInputClick}
+          isSelected={selectedComponent?.id === comp.id}
+        />
+      ))}
+      
+      {/* Connection mode indicator */}
+      {isConnecting && (
+        <Box sx={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          backgroundColor: 'primary.main',
+          color: 'white',
+          px: 2,
+          py: 1,
+          borderRadius: 1,
+          fontSize: '0.875rem',
+          zIndex: 1000
+        }}>
+          Connecting: Click on an input to complete the connection
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+interface DraggableComponentProps {
+  component: Component;
+  onMove: (id: string, x: number, y: number) => void;
+  onClick: (component: Component) => void;
+  onDelete: (id: string) => void;
+  onOutputClick: (componentId: string, output: string) => void;
+  onInputClick: (componentId: string, input: string) => void;
+  isSelected: boolean;
+}
+
+const DraggableComponent: React.FC<DraggableComponentProps> = ({ 
+  component, 
+  onMove, 
+  onClick,
+  onDelete,
+  onOutputClick,
+  onInputClick,
+  isSelected
+}) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'existing_component',
+    item: { id: component.id },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
+
+  const [, drop] = useDrop(() => ({
+    accept: 'existing_component',
+    drop: (item: { id: string }, monitor) => {
+      const delta = monitor.getDifferenceFromInitialOffset();
+      if (delta) {
+        const x = Math.round(component.x + delta.x);
+        const y = Math.round(component.y + delta.y);
+        onMove(item.id, x, y);
+      }
+      return undefined;
+    },
+  }));
+
+  const getComponentIcon = (type: string) => {
+    switch (type) {
+      case 'data_collector': return '📊';
+      case 'ai_model': return '🧠';
+      case 'quantum_optimizer': return '⚛️';
+      case 'risk_analyzer': return '📈';
+      case 'reporting': return '📑';
+      case 'molecular_loader': return '🧬';
+      case 'quantum_simulator': return '🔬';
+      case 'ai_predictor': return '🤖';
+      default: return '📦';
+    }
+  };
+
+  return (
+    <Paper
+      ref={(node) => drag(drop(node))}
+      sx={{
+        position: 'absolute',
+        left: component.x,
+        top: component.y,
+        width: 300,
+        p: 2,
+        cursor: 'move',
+        opacity: isDragging ? 0.5 : 1,
+        border: '2px solid',
+        borderColor: isSelected ? 'primary.main' : 'transparent',
+        borderRadius: 2,
+        boxShadow: isSelected ? '0 8px 16px rgba(0,0,0,0.1)' : '0 4px 8px rgba(0,0,0,0.1)',
+        transition: 'all 0.2s',
+        zIndex: isSelected ? 10 : 1,
+        '&:hover': {
+          boxShadow: '0 6px 12px rgba(0,0,0,0.15)',
+        }
+      }}
+      onClick={() => onClick(component)}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ fontSize: '1.5rem' }}>
+            {getComponentIcon(component.type)}
+          </Box>
+          <Typography variant="subtitle1" fontWeight="bold">
+            {component.name}
+          </Typography>
+        </Box>
+        <IconButton 
+          size="small" 
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(component.id);
+          }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+      
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+          Outputs:
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          {component.outputs.map((output, idx) => (
+            <Chip
+              key={idx}
+              label={output}
+              size="small"
+              variant="outlined"
+              clickable
+              onClick={(e) => {
+                e.stopPropagation();
+                onOutputClick(component.id, output);
+              }}
+            />
+          ))}
+        </Box>
+      </Box>
+      
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+          Inputs:
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          {component.inputs.map((input, idx) => (
+            <Chip
+              key={idx}
+              label={input}
+              size="small"
+              variant="outlined"
+              clickable
+              onClick={(e) => {
+                e.stopPropagation();
+                onInputClick(component.id, input);
+              }}
+            />
+          ))}
+        </Box>
+      </Box>
+    </Paper>
+  );
+};
+
+export const SystemDesigner: React.FC = () => {
+  const dispatch = useDispatch();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [components, setComponents] = useState<Component[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
+  const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
+  const [environment, setEnvironment] = useState('production');
+  const [componentDrawerOpen, setComponentDrawerOpen] = useState(!isMobile);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('info');
+
+  const componentCategories = [
+    {
+      name: 'Data',
+      components: [
+        { type: 'data_collector', name: 'Data Collector', icon: '📊', description: 'Collect and preprocess data', category: 'Data' },
+        { type: 'data_transformer', name: 'Data Transformer', icon: '🔄', description: 'Transform and normalize data', category: 'Data' },
+      ]
+    },
+    {
+      name: 'AI/ML',
+      components: [
+        { type: 'ai_model', name: 'AI Model', icon: '🧠', description: 'Machine learning model', category: 'AI/ML' },
+        { type: 'ai_predictor', name: 'AI Predictor', icon: '🤖', description: 'AI prediction engine', category: 'AI/ML' },
+        { type: 'model_trainer', name: 'Model Trainer', icon: '🏋️', description: 'Train ML models', category: 'AI/ML' },
+      ]
+    },
+    {
+      name: 'Quantum',
+      components: [
+        { type: 'quantum_optimizer', name: 'Quantum Optimizer', icon: '⚛️', description: 'Quantum optimization algorithm', category: 'Quantum' },
+        { type: 'quantum_simulator', name: 'Quantum Simulator', icon: '🔬', description: 'Quantum circuit simulator', category: 'Quantum' },
+        { type: 'quantum_circuit', name: 'Quantum Circuit', icon: '🔌', description: 'Quantum circuit builder', category: 'Quantum' },
+      ]
+    },
+    {
+      name: 'Analysis',
+      components: [
+        { type: 'risk_analyzer', name: 'Risk Analyzer', icon: '📈', description: 'Analyze risks and uncertainties', category: 'Analysis' },
+        { type: 'statistical_analyzer', name: 'Statistical Analyzer', icon: '📊', description: 'Statistical analysis tools', category: 'Analysis' },
+      ]
+    },
+    {
+      name: 'Output',
+      components: [
+        { type: 'reporting', name: 'Reporting', icon: '📑', description: 'Generate reports and visualizations', category: 'Output' },
+        { type: 'api_endpoint', name: 'API Endpoint', icon: '🌐', description: 'Expose system as API', category: 'Output' },
+      ]
+    }
+  ];
+
+  const handleMoveComponent = useCallback((id: string, x: number, y: number) => {
+    setComponents(prev => 
+      prev.map(comp => comp.id === id ? { ...comp, x, y } : comp)
+    );
+  }, []);
+
+  const handleAddComponent = useCallback((type: string, x: number, y: number) => {
+    const componentInfo = componentCategories
+      .flatMap(cat => cat.components)
+      .find(comp => comp.type === type);
+    
+    if (!componentInfo) return;
+    
+    const newComponent: Component = {
+      id: uuidv4(),
+      name: componentInfo.name,
+      type,
+      x,
+      y,
+      config: {},
+      inputs: getDefaultInputs(type),
+      outputs: getDefaultOutputs(type)
+    };
+    setComponents(prev => [...prev, newComponent]);
+  }, []);
+
+  const getDefaultInputs = (type: string): string[] => {
+    switch (type) {
+      case 'data_collector': return ['data_source'];
+      case 'ai_model': return ['training_data', 'model_parameters'];
+      case 'quantum_optimizer': return ['optimization_parameters', 'constraints'];
+      case 'risk_analyzer': return ['risk_model', 'data'];
+      case 'reporting': return ['report_data', 'template'];
+      default: return ['input'];
+    }
+  };
+
+  const getDefaultOutputs = (type: string): string[] => {
+    switch (type) {
+      case 'data_collector': return ['processed_data'];
+      case 'ai_model': return ['predictions', 'model_metrics'];
+      case 'quantum_optimizer': return ['optimized_solution', 'optimization_metrics'];
+      case 'risk_analyzer': return ['risk_assessment', 'risk_factors'];
+      case 'reporting': return ['report', 'visualizations'];
+      default: return ['output'];
+    }
+  };
+
+  const handleComponentClick = useCallback((component: Component) => {
+    setSelectedComponent(component);
+    setSelectedConnection(null);
+  }, []);
+
+  const handleAddConnection = useCallback((from: string, to: string, fromOutput: string, toInput: string) => {
+    const newConnection: Connection = {
+      id: uuidv4(),
+      from,
+      to,
+      fromOutput,
+      toInput
+    };
+    setConnections(prev => [...prev, newConnection]);
+    setSnackbarMessage('Connection added successfully');
+    setSnackbarSeverity('success');
+    setSnackbarOpen(true);
+  }, []);
+
+  const handleDeleteComponent = useCallback((id: string) => {
+    setComponents(prev => prev.filter(comp => comp.id !== id));
+    // Remove any connections involving this component
+    setConnections(prev => prev.filter(
+      conn => conn.from !== id && conn.to !== id
+    ));
+    if (selectedComponent?.id === id) {
+      setSelectedComponent(null);
+    }
+  }, [selectedComponent]);
+
+  const handleDeleteConnection = useCallback((id: string) => {
+    setConnections(prev => prev.filter(conn => conn.id !== id));
+    if (selectedConnection?.id === id) {
+      setSelectedConnection(null);
+    }
+  }, [selectedConnection]);
+
+  const handleSaveProject = async () => {
+    const projectData = {
+      name: projectName,
+      description: projectDescription,
+      configuration: {
+        components,
+        connections
+      }
+    };
+    
+    try {
+      await dispatch(createProject(projectData)).unwrap();
+      setSaveDialogOpen(false);
+      setSnackbarMessage('Project saved successfully');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error) {
+      setSnackbarMessage('Failed to save project: ' + (error as Error).message);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleDeploySystem = async () => {
+    if (!projectName) {
+      setSnackbarMessage('Please save the project first');
+      setSnackbarSeverity('warning');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    try {
+      // First, get the architecture
+      const architecture = {
+        components: components.map(comp => ({
+          type: comp.type,
+          config: comp.config
+        })),
+        connections: connections.map(conn => ({
+          from: conn.from,
+          to: conn.to,
+          fromOutput: conn.fromOutput,
+          toInput: conn.toInput
+        }))
+      };
+
+      // Execute system architect agent
+      const architectResult = await dispatch(
+        executeAgent({
+          agentName: 'system_architect',
+          task: {
+            project_id: 'temp',
+            task: 'design_system',
+            parameters: { requirements: { type: 'general' } }
+          }
+        })
+      ).unwrap();
+
+      if (architectResult.status === 'success') {
+        // Execute system builder agent
+        const builderResult = await dispatch(
+          executeAgent({
+            agentName: 'system_builder',
+            task: {
+              project_id: 'temp',
+              task: 'build_system',
+              parameters: { 
+                architecture: architectResult.result.architecture,
+                project_id: 'temp'
+              }
+            }
+          })
+        ).unwrap();
+
+        if (builderResult.status === 'success') {
+          setDeployDialogOpen(false);
+          setSnackbarMessage('System deployed successfully!');
+          setSnackbarSeverity('success');
+          setSnackbarOpen(true);
+        } else {
+          setSnackbarMessage('Failed to build system: ' + builderResult.error);
+          setSnackbarSeverity('error');
+          setSnackbarOpen(true);
+        }
+      } else {
+        setSnackbarMessage('Failed to design system: ' + architectResult.error);
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      setSnackbarMessage('Deployment failed: ' + (error as Error).message);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleCanvasClick = () => {
+    setSelectedComponent(null);
+    setSelectedConnection(null);
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
+
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
+        {/* Component Drawer */}
+        <Drawer
+          anchor="left"
+          open={componentDrawerOpen}
+          onClose={() => setComponentDrawerOpen(false)}
+          variant={isMobile ? 'temporary' : 'persistent'}
+          sx={{
+            width: 280,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 280,
+              boxSizing: 'border-box',
+              borderRight: '1px solid',
+              borderColor: 'divider',
+              top: 64,
+              height: 'calc(100% - 64px)'
+            },
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Components</Typography>
+              {isMobile && (
+                <IconButton onClick={() => setComponentDrawerOpen(false)}>
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </Box>
+            
+            {componentCategories.map((category) => (
+              <Box key={category.name} sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" color="textSecondary" sx={{ mb: 1 }}>
+                  {category.name}
+                </Typography>
+                {category.components.map((comp) => (
+                  <ComponentItem
+                    key={comp.type}
+                    type={comp.type}
+                    name={comp.name}
+                    icon={comp.icon}
+                    description={comp.description}
+                    category={comp.category}
+                  />
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Drawer>
+
+        {/* Main Content */}
+        <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+          {/* Toolbar */}
+          <Box sx={{ 
+            p: 2, 
+            borderBottom: '1px solid', 
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {!isMobile && (
+                <IconButton onClick={() => setComponentDrawerOpen(!componentDrawerOpen)}>
+                  <DragIcon />
+                </IconButton>
+              )}
+              <Typography variant="h6">System Designer</Typography>
+            </Box>
+            
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                variant="outlined" 
+                startIcon={<SaveIcon />}
+                onClick={() => setSaveDialogOpen(true)}
+                disabled={components.length === 0}
+              >
+                Save Project
+              </Button>
+              <Button 
+                variant="contained" 
+                startIcon={<PlayIcon />}
+                onClick={() => setDeployDialogOpen(true)}
+                disabled={components.length === 0}
+              >
+                Deploy System
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Canvas Area */}
+          <Box sx={{ flexGrow: 1, p: 2, overflow: 'auto' }}>
+            <DesignerCanvas
+              components={components}
+              connections={connections}
+              onMoveComponent={handleMoveComponent}
+              onAddComponent={handleAddComponent}
+              onComponentClick={handleComponentClick}
+              onAddConnection={handleAddConnection}
+              onDeleteComponent={handleDeleteComponent}
+              onDeleteConnection={handleDeleteConnection}
+              selectedComponent={selectedComponent}
+              selectedConnection={selectedConnection}
+            />
+          </Box>
+
+          {/* Component Configuration Panel */}
+          <AnimatePresence>
+            {selectedComponent && (
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25 }}
+                style={{ 
+                  position: 'absolute', 
+                  right: 0, 
+                  top: 64, 
+                  bottom: 0, 
+                  width: 320,
+                  backgroundColor: 'background.paper',
+                  borderLeft: '1px solid',
+                  borderColor: 'divider',
+                  zIndex: 100
+                }}
+              >
+                <Box sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">Component Settings</Typography>
+                    <IconButton onClick={() => setSelectedComponent(null)}>
+                      <CloseIcon />
+                    </IconButton>
+                  </Box>
+                  
+                  <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                    {selectedComponent.name}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                    Type: {selectedComponent.type.replace('_', ' ').title()}
+                  </Typography>
+                  
+                  <TextField
+                    fullWidth
+                    label="Component Name"
+                    value={selectedComponent.name}
+                    onChange={(e) => {
+                      setComponents(prev => 
+                        prev.map(comp => 
+                          comp.id === selectedComponent.id 
+                            ? { ...comp, name: e.target.value } 
+                            : comp
+                        )
+                      );
+                    }}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Configuration
+                  </Typography>
+                  
+                  {/* Dynamic configuration fields based on component type */}
+                  {selectedComponent.type === 'ai_model' && (
+                    <>
+                      <TextField
+                        fullWidth
+                        label="Model Type"
+                        value={selectedComponent.config.model_type || ''}
+                        onChange={(e) => {
+                          setComponents(prev => 
+                            prev.map(comp => 
+                              comp.id === selectedComponent.id 
+                                ? { 
+                                    ...comp, 
+                                    config: { 
+                                      ...comp.config, 
+                                      model_type: e.target.value 
+                                    } 
+                                  } 
+                                : comp
+                            )
+                          );
+                        }}
+                        select
+                        sx={{ mb: 2 }}
+                      >
+                        <option value="neural_network">Neural Network</option>
+                        <option value="random_forest">Random Forest</option>
+                        <option value="svm">Support Vector Machine</option>
+                      </TextField>
+                      
+                      <TextField
+                        fullWidth
+                        label="Training Epochs"
+                        type="number"
+                        value={selectedComponent.config.epochs || 100}
+                        onChange={(e) => {
+                          setComponents(prev => 
+                            prev.map(comp => 
+                              comp.id === selectedComponent.id 
+                                ? { 
+                                    ...comp, 
+                                    config: { 
+                                      ...comp.config, 
+                                      epochs: parseInt(e.target.value) || 100 
+                                    } 
+                                  } 
+                                : comp
+                            )
+                          );
+                        }}
+                        sx={{ mb: 2 }}
+                      />
+                    </>
+                  )}
+                  
+                  {selectedComponent.type === 'quantum_optimizer' && (
+                    <>
+                      <TextField
+                        fullWidth
+                        label="Algorithm"
+                        value={selectedComponent.config.algorithm || 'qaoa'}
+                        onChange={(e) => {
+                          setComponents(prev => 
+                            prev.map(comp => 
+                              comp.id === selectedComponent.id 
+                                ? { 
+                                    ...comp, 
+                                    config: { 
+                                      ...comp.config, 
+                                      algorithm: e.target.value 
+                                    } 
+                                  } 
+                                : comp
+                            )
+                          );
+                        }}
+                        select
+                        sx={{ mb: 2 }}
+                      >
+                        <option value="qaoa">QAOA</option>
+                        <option value="vqe">VQE</option>
+                        <option value="grover">Grover</option>
+                      </TextField>
+                      
+                      <TextField
+                        fullWidth
+                        label="Qubits"
+                        type="number"
+                        value={selectedComponent.config.qubits || 10}
+                        onChange={(e) => {
+                          setComponents(prev => 
+                            prev.map(comp => 
+                              comp.id === selectedComponent.id 
+                                ? { 
+                                    ...comp, 
+                                    config: { 
+                                      ...comp.config, 
+                                      qubits: parseInt(e.target.value) || 10 
+                                    } 
+                                  } 
+                                : comp
+                            )
+                          );
+                        }}
+                        sx={{ mb: 2 }}
+                      />
+                    </>
+                  )}
+                </Box>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Box>
+
+        {/* Floating Action Button for mobile */}
+        {isMobile && (
+          <Zoom in={true}>
+            <Fab
+              color="primary"
+              aria-label="add component"
+              sx={{ position: 'fixed', bottom: 16, right: 16 }}
+              onClick={() => setComponentDrawerOpen(true)}
+            >
+              <AddIcon />
+            </Fab>
+          </Zoom>
+        )}
+
+        {/* Save Project Dialog */}
+        <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
+          <DialogTitle>Save Project</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Project Name"
+              fullWidth
+              variant="outlined"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+            />
+            <TextField
+              margin="dense"
+              label="Description"
+              fullWidth
+              variant="outlined"
+              multiline
+              rows={3}
+              value={projectDescription}
+              onChange={(e) => setProjectDescription(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveProject} variant="contained">Save</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Deploy System Dialog */}
+        <Dialog open={deployDialogOpen} onClose={() => setDeployDialogOpen(false)}>
+          <DialogTitle>Deploy System</DialogTitle>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This will build and deploy your quantum-AI system to the specified environment.
+            </Alert>
+            <TextField
+              margin="dense"
+              label="Environment"
+              fullWidth
+              variant="outlined"
+              select
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value)}
+            >
+              <option value="development">Development</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+            </TextField>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeployDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleDeploySystem} variant="contained">Deploy</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          onClose={handleSnackbarClose}
+        >
+          <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
+      </Box>
+    </DndProvider>
+  );
+};
