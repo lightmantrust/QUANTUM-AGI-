@@ -1,0 +1,513 @@
+// src/components/ProjectDetails.tsx
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Paper, 
+  Typography, 
+  Button, 
+  Grid, 
+  Card, 
+  CardContent, 
+  Chip, 
+  Divider,
+  Tab,
+  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert,
+  CircularProgress
+} from '@mui/material';
+import { 
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  PlayArrow as PlayIcon,
+  Stop as StopIcon,
+  Refresh as RefreshIcon,
+  Settings as SettingsIcon,
+  Timeline as TimelineIcon,
+  Assessment as AssessmentIcon,
+  Code as CodeIcon,
+  CloudUpload as CloudUploadIcon
+} from '@mui/icons-material';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchProject, updateProject, deleteProject } from '../store/projectsSlice';
+import { executeAgent } from '../store/agentsSlice';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+const ProjectDetails = () => {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { project, loading, error } = useSelector((state) => state.projects);
+  const [tabValue, setTabValue] = useState(0);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
+  const [environment, setEnvironment] = useState('production');
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [executions, setExecutions] = useState([]);
+  const [metrics, setMetrics] = useState([]);
+  const [deploymentStatus, setDeploymentStatus] = useState(null);
+
+  useEffect(() => {
+    if (projectId) {
+      dispatch(fetchProject(projectId));
+    }
+  }, [projectId, dispatch]);
+
+  useEffect(() => {
+    if (project) {
+      setProjectName(project.name);
+      setProjectDescription(project.description);
+      
+      // Mock data for executions and metrics
+      setExecutions([
+        { id: '1', agent: 'System Architect', status: 'Completed', timestamp: '2023-06-15 10:30:00', duration: '2m 15s' },
+        { id: '2', agent: 'System Builder', status: 'Completed', timestamp: '2023-06-15 10:35:00', duration: '5m 42s' },
+        { id: '3', agent: 'Quantum Optimizer', status: 'Running', timestamp: '2023-06-15 10:45:00', duration: '3m 10s' }
+      ]);
+      
+      setMetrics([
+        { name: 'Jan', value: 400 },
+        { name: 'Feb', value: 300 },
+        { name: 'Mar', value: 200 },
+        { name: 'Apr', value: 278 },
+        { name: 'May', value: 189 },
+        { name: 'Jun', value: 239 },
+      ]);
+    }
+  }, [project]);
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const handleEditProject = () => {
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveProject = async () => {
+    try {
+      await dispatch(updateProject({
+        id: projectId,
+        name: projectName,
+        description: projectDescription
+      })).unwrap();
+      setEditDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to update project:', error);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (window.confirm('Are you sure you want to delete this project?')) {
+      try {
+        await dispatch(deleteProject(projectId)).unwrap();
+        navigate('/projects');
+      } catch (error) {
+        console.error('Failed to delete project:', error);
+      }
+    }
+  };
+
+  const handleDeploySystem = async () => {
+    try {
+      // Mock deployment process
+      setDeploymentStatus('deploying');
+      
+      // Simulate deployment
+      setTimeout(() => {
+        setDeploymentStatus('success');
+      }, 3000);
+    } catch (error) {
+      setDeploymentStatus('error');
+      console.error('Deployment failed:', error);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Completed': return 'success';
+      case 'Running': return 'info';
+      case 'Failed': return 'error';
+      default: return 'default';
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
+  }
+
+  if (!project) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">Project not found</Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold">
+            {project.name}
+          </Typography>
+          <Typography variant="body1" color="textSecondary">
+            {project.description}
+          </Typography>
+        </Box>
+        <Box>
+          <Button 
+            variant="outlined" 
+            startIcon={<EditIcon />}
+            onClick={handleEditProject}
+            sx={{ mr: 1 }}
+          >
+            Edit
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<PlayIcon />}
+            onClick={() => setDeployDialogOpen(true)}
+            sx={{ mr: 1 }}
+          >
+            Deploy
+          </Button>
+          <Button 
+            variant="outlined" 
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteProject}
+          >
+            Delete
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Status Card */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={3}>
+              <Typography variant="body2" color="textSecondary">
+                Status
+              </Typography>
+              <Chip 
+                label={project.status} 
+                color={getStatusColor(project.status)} 
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Typography variant="body2" color="textSecondary">
+                Created
+              </Typography>
+              <Typography variant="body1">
+                {new Date(project.created_at).toLocaleDateString()}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Typography variant="body2" color="textSecondary">
+                Last Updated
+              </Typography>
+              <Typography variant="body1">
+                {new Date(project.updated_at).toLocaleDateString()}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Typography variant="body2" color="textSecondary">
+                Components
+              </Typography>
+              <Typography variant="body1">
+                {project.configuration?.components?.length || 0}
+              </Typography>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Tabs */}
+      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 3 }}>
+        <Tab icon={<CodeIcon />} label="Architecture" />
+        <Tab icon={<TimelineIcon />} label="Executions" />
+        <Tab icon={<AssessmentIcon />} label="Metrics" />
+        <Tab icon={<CloudUploadIcon />} label="Deployments" />
+      </Tabs>
+
+      {/* Tab Content */}
+      <Box sx={{ mb: 3 }}>
+        {tabValue === 0 && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              System Architecture
+            </Typography>
+            
+            {project.configuration?.components?.length > 0 ? (
+              <Grid container spacing={2}>
+                {project.configuration.components.map((component, index) => (
+                  <Grid item xs={12} sm={6} md={4} key={index}>
+                    <Card sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {component.type.replace('_', ' ').title()}
+                        </Typography>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="body2" color="textSecondary">
+                          Configuration:
+                        </Typography>
+                        <pre style={{ fontSize: '0.8rem', overflow: 'auto' }}>
+                          {JSON.stringify(component.config, null, 2)}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Alert severity="info">No components defined yet</Alert>
+            )}
+            
+            {project.configuration?.connections?.length > 0 && (
+              <>
+                <Typography variant="h6" fontWeight="bold" sx={{ mt: 3, mb: 2 }}>
+                  Connections
+                </Typography>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>From</TableCell>
+                        <TableCell>To</TableCell>
+                        <TableCell>Output</TableCell>
+                        <TableCell>Input</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {project.configuration.connections.map((connection, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{connection.from}</TableCell>
+                          <TableCell>{connection.to}</TableCell>
+                          <TableCell>{connection.fromOutput}</TableCell>
+                          <TableCell>{connection.toInput}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Paper>
+        )}
+        
+        {tabValue === 1 && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              Agent Executions
+            </Typography>
+            
+            {executions.length > 0 ? (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Agent</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Timestamp</TableCell>
+                      <TableCell>Duration</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {executions.map((execution) => (
+                      <TableRow key={execution.id}>
+                        <TableCell>{execution.agent}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={execution.status} 
+                            color={getStatusColor(execution.status)} 
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{execution.timestamp}</TableCell>
+                        <TableCell>{execution.duration}</TableCell>
+                        <TableCell>
+                          <IconButton size="small">
+                            <RefreshIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Alert severity="info">No executions yet</Alert>
+            )}
+          </Paper>
+        )}
+        
+        {tabValue === 2 && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              Performance Metrics
+            </Typography>
+            
+            <Box sx={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={metrics}
+                  margin={{
+                    top: 5,
+                    right: 30,
+                    left: 20,
+                    bottom: 5,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="value" stroke="#3b5bdb" activeDot={{ r: 8 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        )}
+        
+        {tabValue === 3 && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+              Deployments
+            </Typography>
+            
+            <Alert severity="info" sx={{ mb: 2 }}>
+              No deployments yet. Deploy your system to see deployment history.
+            </Alert>
+            
+            <Button 
+              variant="contained" 
+              startIcon={<CloudUploadIcon />}
+              onClick={() => setDeployDialogOpen(true)}
+            >
+              Deploy System
+            </Button>
+          </Paper>
+        )}
+      </Box>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)}>
+        <DialogTitle>Edit Project</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Project Name"
+            fullWidth
+            variant="outlined"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+          />
+          <TextField
+            margin="dense"
+            label="Description"
+            fullWidth
+            variant="outlined"
+            multiline
+            rows={3}
+            value={projectDescription}
+            onChange={(e) => setProjectDescription(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveProject} variant="contained">Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Deploy System Dialog */}
+      <Dialog open={deployDialogOpen} onClose={() => setDeployDialogOpen(false)}>
+        <DialogTitle>Deploy System</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This will build and deploy your quantum-AI system to the specified environment.
+          </Alert>
+          
+          {deploymentStatus === 'deploying' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <CircularProgress size={24} sx={{ mr: 2 }} />
+              <Typography>Deploying system...</Typography>
+            </Box>
+          )}
+          
+          {deploymentStatus === 'success' && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              System deployed successfully!
+            </Alert>
+          )}
+          
+          {deploymentStatus === 'error' && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Deployment failed. Please try again.
+            </Alert>
+          )}
+          
+          <TextField
+            margin="dense"
+            label="Environment"
+            fullWidth
+            variant="outlined"
+            select
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value)}
+            disabled={deploymentStatus === 'deploying'}
+          >
+            <option value="development">Development</option>
+            <option value="staging">Staging</option>
+            <option value="production">Production</option>
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeployDialogOpen(false)} disabled={deploymentStatus === 'deploying'}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeploySystem} 
+            variant="contained"
+            disabled={deploymentStatus === 'deploying'}
+          >
+            Deploy
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default ProjectDetails;
