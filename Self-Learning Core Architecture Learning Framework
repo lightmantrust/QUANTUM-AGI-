@@ -1,0 +1,485 @@
+# self_learning/learning_framework.py
+import numpy as np
+import pandas as pd
+from typing import Dict, Any, List, Optional, Tuple, Union
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+import json
+import logging
+from datetime import datetime
+import pickle
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, classification_report
+from collections import defaultdict, deque
+import hashlib
+
+logger = logging.getLogger(__name__)
+
+class LearningTaskType(Enum):
+    UI_NAVIGATION = "ui_navigation"
+    DATA_MANIPULATION = "data_manipulation"
+    SYSTEM_CONFIGURATION = "system_configuration"
+    WORKFLOW_EXECUTION = "workflow_execution"
+    ERROR_RESOLUTION = "error_resolution"
+
+class LearningEventType(Enum):
+    USER_ACTION = "user_action"
+    SYSTEM_RESPONSE = "system_response"
+    TASK_COMPLETION = "task_completion"
+    ERROR_OCCURRED = "error_occurred"
+    FEEDBACK_PROVIDED = "feedback_provided"
+
+@dataclass
+class UserAction:
+    user_id: str
+    session_id: str
+    timestamp: datetime
+    action_type: str
+    action_data: Dict[str, Any]
+    context: Dict[str, Any]
+    success: bool
+    duration: float  # in seconds
+
+@dataclass
+class LearningPattern:
+    pattern_id: str
+    pattern_type: LearningTaskType
+    action_sequence: List[str]
+    context_pattern: Dict[str, Any]
+    frequency: int
+    success_rate: float
+    avg_duration: float
+    last_observed: datetime
+    automation_ready: bool = False
+
+@dataclass
+class AutomationRule:
+    rule_id: str
+    pattern_id: str
+    conditions: Dict[str, Any]
+    actions: List[Dict[str, Any]]
+    confidence: float
+    success_count: int
+    failure_count: int
+    last_used: datetime
+    active: bool = True
+
+class PatternExtractor(ABC):
+    @abstractmethod
+    def extract_patterns(self, actions: List[UserAction]) -> List[LearningPattern]:
+        pass
+
+class SequencePatternExtractor(PatternExtractor):
+    def extract_patterns(self, actions: List[UserAction]) -> List[LearningPattern]:
+        patterns = []
+        
+        # Group actions by session
+        sessions = defaultdict(list)
+        for action in actions:
+            sessions[action.session_id].append(action)
+        
+        # Extract sequences from each session
+        for session_id, session_actions in sessions.items():
+            if len(session_actions) < 3:  # Skip very short sessions
+                continue
+                
+            # Extract sequential patterns
+            for i in range(len(session_actions) - 2):
+                sequence = [action.action_type for action in session_actions[i:i+3]]
+                context = session_actions[i].context
+                
+                # Create pattern hash
+                pattern_hash = hashlib.md5(
+                    (str(sequence) + str(sorted(context.items()))).encode()
+                ).hexdigest()
+                
+                # Check if pattern already exists
+                existing_pattern = None
+                for pattern in patterns:
+                    if pattern.pattern_id == pattern_hash:
+                        existing_pattern = pattern
+                        break
+                
+                if existing_pattern:
+                    # Update existing pattern
+                    existing_pattern.frequency += 1
+                    existing_pattern.last_observed = max(existing_pattern.last_observed, session_actions[i].timestamp)
+                    
+                    # Update success rate
+                    success_count = sum(1 for action in session_actions[i:i+3] if action.success)
+                    existing_pattern.success_rate = (
+                        (existing_pattern.success_rate * (existing_pattern.frequency - 1) + success_count / 3) 
+                        / existing_pattern.frequency
+                    )
+                    
+                    # Update average duration
+                    total_duration = sum(action.duration for action in session_actions[i:i+3])
+                    existing_pattern.avg_duration = (
+                        (existing_pattern.avg_duration * (existing_pattern.frequency - 1) + total_duration / 3) 
+                        / existing_pattern.frequency
+                    )
+                else:
+                    # Create new pattern
+                    success_count = sum(1 for action in session_actions[i:i+3] if action.success)
+                    patterns.append(LearningPattern(
+                        pattern_id=pattern_hash,
+                        pattern_type=self._classify_task_type(sequence),
+                        action_sequence=sequence,
+                        context_pattern=context,
+                        frequency=1,
+                        success_rate=success_count / 3,
+                        avg_duration=sum(action.duration for action in session_actions[i:i+3]) / 3,
+                        last_observed=session_actions[i].timestamp
+                    ))
+        
+        return patterns
+    
+    def _classify_task_type(self, sequence: List[str]) -> LearningTaskType:
+        # Simple heuristic to classify task type based on action sequence
+        if any('navigate' in action for action in sequence):
+            return LearningTaskType.UI_NAVIGATION
+        elif any('manipulate' in action for action in sequence):
+            return LearningTaskType.DATA_MANIPULATION
+        elif any('configure' in action for action in sequence):
+            return LearningTaskType.SYSTEM_CONFIGURATION
+        elif any('execute' in action for action in sequence):
+            return LearningTaskType.WORKFLOW_EXECUTION
+        else:
+            return LearningTaskType.ERROR_RESOLUTION
+
+class ContextualPatternExtractor(PatternExtractor):
+    def extract_patterns(self, actions: List[UserAction]) -> List[LearningPattern]:
+        patterns = []
+        
+        # Group by context similarity
+        context_groups = defaultdict(list)
+        for action in actions:
+            # Create context key (simplified)
+            context_key = self._create_context_key(action.context)
+            context_groups[context_key].append(action)
+        
+        # Extract patterns within each context group
+        for context_key, context_actions in context_groups.items():
+            if len(context_actions) < 3:
+                continue
+                
+            # Use clustering to find patterns in similar contexts
+            action_vectors = self._create_action_vectors(context_actions)
+            
+            # Cluster similar action sequences
+            n_clusters = min(5, len(context_actions) // 3)
+            if n_clusters < 2:
+                continue
+                
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            clusters = kmeans.fit_predict(action_vectors)
+            
+            # Extract patterns from each cluster
+            for cluster_id in range(n_clusters):
+                cluster_indices = np.where(clusters == cluster_id)[0]
+                cluster_actions = [context_actions[i] for i in cluster_indices]
+                
+                if len(cluster_actions) < 3:
+                    continue
+                
+                # Create pattern from cluster
+                sequence = [action.action_type for action in cluster_actions]
+                context = cluster_actions[0].context
+                
+                pattern_hash = hashlib.md5(
+                    (str(sequence) + str(sorted(context.items()))).encode()
+                ).hexdigest()
+                
+                success_count = sum(1 for action in cluster_actions if action.success)
+                patterns.append(LearningPattern(
+                    pattern_id=pattern_hash,
+                    pattern_type=self._classify_task_type(sequence),
+                    action_sequence=sequence,
+                    context_pattern=context,
+                    frequency=len(cluster_actions),
+                    success_rate=success_count / len(cluster_actions),
+                    avg_duration=sum(action.duration for action in cluster_actions) / len(cluster_actions),
+                    last_observed=max(action.timestamp for action in cluster_actions)
+                ))
+        
+        return patterns
+    
+    def _create_context_key(self, context: Dict[str, Any]) -> str:
+        # Simplified context key creation
+        key_parts = []
+        
+        # Add page/section if available
+        if 'page' in context:
+            key_parts.append(context['page'])
+        
+        # Add component type if available
+        if 'component_type' in context:
+            key_parts.append(context['component_type'])
+        
+        # Add task type if available
+        if 'task_type' in context:
+            key_parts.append(context['task_type'])
+        
+        return '|'.join(key_parts) if key_parts else 'default'
+    
+    def _create_action_vectors(self, actions: List[UserAction]) -> np.ndarray:
+        # Convert actions to numerical vectors
+        unique_actions = list(set(action.action_type for action in actions))
+        action_to_idx = {action: idx for idx, action in enumerate(unique_actions)}
+        
+        vectors = []
+        for action in actions:
+            vector = np.zeros(len(unique_actions))
+            vector[action_to_idx[action.action_type]] = 1
+            vectors.append(vector)
+        
+        return np.array(vectors)
+    
+    def _classify_task_type(self, sequence: List[str]) -> LearningTaskType:
+        # More sophisticated classification based on context
+        if any('click' in action for action in sequence):
+            return LearningTaskType.UI_NAVIGATION
+        elif any('input' in action for action in sequence):
+            return LearningTaskType.DATA_MANIPULATION
+        elif any('select' in action for action in sequence):
+            return LearningTaskType.SYSTEM_CONFIGURATION
+        elif any('submit' in action for action in sequence):
+            return LearningTaskType.WORKFLOW_EXECUTION
+        else:
+            return LearningTaskType.ERROR_RESOLUTION
+
+class SelfLearningCore:
+    def __init__(self):
+        self.pattern_extractors = [
+            SequencePatternExtractor(),
+            ContextualPatternExtractor()
+        ]
+        self.patterns: List[LearningPattern] = []
+        self.automation_rules: List[AutomationRule] = []
+        self.user_models: Dict[str, Any] = {}  # User-specific models
+        self.action_history: deque(maxlen=10000)  # Recent actions
+        self.feedback_data: List[Dict[str, Any]] = []
+        
+    def record_action(self, action: UserAction):
+        """Record a user action for learning"""
+        self.action_history.append(action)
+        
+        # Periodically extract patterns
+        if len(self.action_history) % 100 == 0:
+            self._extract_patterns()
+            self._update_automation_rules()
+    
+    def extract_patterns(self) -> List[LearningPattern]:
+        """Extract patterns from recorded actions"""
+        self._extract_patterns()
+        return self.patterns
+    
+    def _extract_patterns(self):
+        """Internal pattern extraction"""
+        actions = list(self.action_history)
+        
+        for extractor in self.pattern_extractors:
+            new_patterns = extractor.extract_patterns(actions)
+            
+            # Merge with existing patterns
+            for new_pattern in new_patterns:
+                existing_pattern = None
+                for pattern in self.patterns:
+                    if pattern.pattern_id == new_pattern.pattern_id:
+                        existing_pattern = pattern
+                        break
+                
+                if existing_pattern:
+                    # Update existing pattern
+                    existing_pattern.frequency += new_pattern.frequency
+                    existing_pattern.success_rate = (
+                        (existing_pattern.success_rate * (existing_pattern.frequency - new_pattern.frequency) + 
+                         new_pattern.success_rate * new_pattern.frequency) / existing_pattern.frequency
+                    )
+                    existing_pattern.avg_duration = (
+                        (existing_pattern.avg_duration * (existing_pattern.frequency - new_pattern.frequency) + 
+                         new_pattern.avg_duration * new_pattern.frequency) / existing_pattern.frequency
+                    )
+                    existing_pattern.last_observed = max(existing_pattern.last_observed, new_pattern.last_observed)
+                else:
+                    self.patterns.append(new_pattern)
+    
+    def _update_automation_rules(self):
+        """Update automation rules based on learned patterns"""
+        for pattern in self.patterns:
+            # Check if pattern is ready for automation
+            if pattern.frequency >= 5 and pattern.success_rate >= 0.8 and not pattern.automation_ready:
+                # Create automation rule
+                rule = AutomationRule(
+                    rule_id=f"auto_{pattern.pattern_id}",
+                    pattern_id=pattern.pattern_id,
+                    conditions=pattern.context_pattern,
+                    actions=[
+                        {
+                            "action_type": action_type,
+                            "parameters": self._infer_parameters(action_type, pattern)
+                        }
+                        for action_type in pattern.action_sequence
+                    ],
+                    confidence=min(0.95, pattern.success_rate),
+                    success_count=0,
+                    failure_count=0,
+                    last_used=datetime.now()
+                )
+                self.automation_rules.append(rule)
+                pattern.automation_ready = True
+    
+    def _infer_parameters(self, action_type: str, pattern: LearningPattern) -> Dict[str, Any]:
+        """Infer parameters for automation based on pattern"""
+        # In a real implementation, this would use more sophisticated inference
+        # For now, return empty parameters
+        return {}
+    
+    def suggest_automation(self, user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Suggest automation options based on current context"""
+        suggestions = []
+        
+        # Find applicable automation rules
+        for rule in self.automation_rules:
+            if not rule.active:
+                continue
+                
+            # Check if rule conditions match current context
+            if self._match_conditions(rule.conditions, context):
+                suggestions.append({
+                    "rule_id": rule.rule_id,
+                    "confidence": rule.confidence,
+                    "actions": rule.actions,
+                    "expected_benefit": rule.avg_duration * rule.frequency  # Time saved
+                })
+        
+        # Sort by confidence
+        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        return suggestions
+    
+    def _match_conditions(self, conditions: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """Check if conditions match current context"""
+        # Simple matching - in a real implementation, this would be more sophisticated
+        for key, value in conditions.items():
+            if key not in context or context[key] != value:
+                return False
+        return True
+    
+    def execute_automation(self, rule_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute an automation rule"""
+        rule = next((r for r in self.automation_rules if r.rule_id == rule_id), None)
+        if not rule or not rule.active:
+            return {"status": "error", "message": "Rule not found or inactive"}
+        
+        try:
+            # Execute the automation
+            results = []
+            for action in rule.actions:
+                # In a real implementation, this would execute the actual action
+                result = {
+                    "action_type": action["action_type"],
+                    "status": "success",
+                    "timestamp": datetime.now().isoformat()
+                }
+                results.append(result)
+            
+            # Update rule statistics
+            rule.success_count += 1
+            rule.last_used = datetime.now()
+            
+            return {
+                "status": "success",
+                "rule_id": rule_id,
+                "results": results
+            }
+        except Exception as e:
+            # Handle failure
+            rule.failure_count += 1
+            
+            # Disable rule if too many failures
+            if rule.failure_count > 5 and rule.failure_count / (rule.success_count + rule.failure_count) > 0.3:
+                rule.active = False
+            
+            return {
+                "status": "error",
+                "rule_id": rule_id,
+                "message": str(e)
+            }
+    
+    def record_feedback(self, feedback: Dict[str, Any]):
+        """Record feedback on automation"""
+        self.feedback_data.append(feedback)
+        
+        # Update rules based on feedback
+        if feedback.get("type") == "automation_feedback":
+            rule_id = feedback.get("rule_id")
+            success = feedback.get("success", False)
+            
+            rule = next((r for r in self.automation_rules if r.rule_id == rule_id), None)
+            if rule:
+                if success:
+                    rule.success_count += 1
+                else:
+                    rule.failure_count += 1
+                
+                # Adjust confidence
+                if rule.failure_count > 0:
+                    rule.confidence = max(0.1, rule.confidence * 0.9)
+                
+                # Disable rule if too many failures
+                if rule.failure_count > 5 and rule.failure_count / (rule.success_count + rule.failure_count) > 0.3:
+                    rule.active = False
+    
+    def get_user_model(self, user_id: str) -> Dict[str, Any]:
+        """Get or create a user-specific learning model"""
+        if user_id not in self.user_models:
+            # Create a simple user model
+            self.user_models[user_id] = {
+                "user_id": user_id,
+                "preferences": {},
+                "skill_level": {},
+                "frequent_actions": defaultdict(int),
+                "success_patterns": defaultdict(list)
+            }
+        
+        return self.user_models[user_id]
+    
+    def update_user_model(self, user_id: str, action: UserAction):
+        """Update user model based on action"""
+        model = self.get_user_model(user_id)
+        
+        # Update frequent actions
+        model["frequent_actions"][action.action_type] += 1
+        
+        # Update success patterns
+        if action.success:
+            model["success_patterns"][action.action_type].append({
+                "timestamp": action.timestamp,
+                "context": action.context
+            })
+        
+        # Update skill level (simplified)
+        if action.success:
+            skill_area = self._classify_skill_area(action.action_type)
+            current_level = model["skill_level"].get(skill_area, 0.5)
+            model["skill_level"][skill_area] = min(1.0, current_level + 0.01)
+    
+    def _classify_skill_area(self, action_type: str) -> str:
+        """Classify action type into skill area"""
+        if "navigate" in action_type:
+            return "navigation"
+        elif "manipulate" in action_type:
+            return "data_manipulation"
+        elif "configure" in action_type:
+            return "system_configuration"
+        elif "execute" in action_type:
+            return "workflow_execution"
+        else:
+            return "general"
+
+# Global instance
+self_learning_core = SelfLearningCore()
