@@ -1,0 +1,434 @@
+# synthetic_intelligence/simulators.py
+import numpy as np
+import pandas as pd
+import networkx as nx
+from typing import Dict, Any, List, Tuple
+from .si_core import Simulator, SimulationConfig, SimulationType
+from qiskit import QuantumCircuit, execute, Aer
+from qiskit.quantum_info import Statevector
+from qiskit.algorithms import QAOA, VQE
+from qiskit.algorithms.optimizers import COBYLA
+from qiskit.opflow import I, X, Z, PauliSumOp
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import random
+import logging
+
+logger = logging.getLogger(__name__)
+
+class QuantumCircuitSimulator(Simulator):
+    def run(self, config: SimulationConfig) -> Dict[str, Any]:
+        n_qubits = config.parameters.get('n_qubits', 4)
+        circuit_type = config.parameters.get('circuit_type', 'random')
+        depth = config.parameters.get('depth', 3)
+        shots = config.parameters.get('shots', 1000)
+        
+        # Create quantum circuit
+        qc = QuantumCircuit(n_qubits, n_qubits)
+        
+        if circuit_type == 'random':
+            # Random circuit
+            for _ in range(depth):
+                for q in range(n_qubits):
+                    if random.random() < 0.5:
+                        qc.h(q)
+                    if random.random() < 0.5:
+                        qc.x(q)
+                
+                # Random entanglement
+                for _ in range(n_qubits // 2):
+                    q1, q2 = random.sample(range(n_qubits), 2)
+                    qc.cx(q1, q2)
+        elif circuit_type == 'qaoa':
+            # QAOA circuit
+            gamma = config.parameters.get('gamma', 0.5)
+            beta = config.parameters.get('beta', 0.5)
+            
+            # Initial state
+            qc.h(range(n_qubits))
+            
+            # QAOA layers
+            for _ in range(depth):
+                # Problem unitary
+                for i in range(n_qubits):
+                    qc.rz(2 * gamma, i)
+                    if i < n_qubits - 1:
+                        qc.rzz(2 * gamma, i, i + 1)
+                
+                # Mixer unitary
+                for i in range(n_qubits):
+                    qc.rx(2 * beta, i)
+        elif circuit_type == 'vqe':
+            # VQE circuit
+            # Simplified VQE for demonstration
+            theta = config.parameters.get('theta', 0.5)
+            
+            # Initial state
+            qc.h(range(n_qubits))
+            
+            # Ansatz
+            for i in range(n_qubits):
+                qc.ry(theta, i)
+            
+            # Entanglement
+            for i in range(0, n_qubits - 1, 2):
+                qc.cx(i, i + 1)
+        else:
+            # Default to random
+            for _ in range(depth):
+                for q in range(n_qubits):
+                    if random.random() < 0.5:
+                        qc.h(q)
+                    if random.random() < 0.5:
+                        qc.x(q)
+                
+                # Random entanglement
+                for _ in range(n_qubits // 2):
+                    q1, q2 = random.sample(range(n_qubits), 2)
+                    qc.cx(q1, q2)
+        
+        # Measure
+        qc.measure(range(n_qubits), range(n_qubits))
+        
+        # Execute
+        backend = Aer.get_backend('qasm_simulator')
+        job = execute(qc, backend, shots=shots)
+        result = job.result()
+        counts = result.get_counts(qc)
+        
+        # Calculate statevector if needed
+        if config.parameters.get('get_statevector', False):
+            qc_no_measure = qc.remove_final_measurements(inplace=False)
+            statevector = Statevector.from_instruction(qc_no_measure)
+            statevector_dict = statevector.to_dict()
+        else:
+            statevector_dict = None
+        
+        return {
+            'circuit': qc.qasm(),
+            'counts': counts,
+            'statevector': statevector_dict,
+            'n_qubits': n_qubits,
+            'depth': qc.depth(),
+            'shots': shots
+        }
+
+class MarketDynamicsSimulator(Simulator):
+    def run(self, config: SimulationConfig) -> Dict[str, Any]:
+        n_assets = config.parameters.get('n_assets', 5)
+        initial_prices = config.parameters.get('initial_prices', [100.0] * n_assets)
+        volatility = config.parameters.get('volatility', 0.01)
+        drift = config.parameters.get('drift', 0.0001)
+        correlation = config.parameters.get('correlation', 0.2)
+        duration = config.duration
+        
+        # Initialize price history
+        price_history = [initial_prices]
+        
+        # Generate correlation matrix
+        corr_matrix = np.ones((n_assets, n_assets)) * correlation
+        np.fill_diagonal(corr_matrix, 1.0)
+        
+        # Cholesky decomposition for correlated random variables
+        L = np.linalg.cholesky(corr_matrix)
+        
+        # Simulate price movements
+        for t in range(1, duration):
+            # Generate correlated random shocks
+            shocks = np.random.normal(0, 1, n_assets)
+            correlated_shocks = L @ shocks
+            
+            # Calculate new prices using geometric Brownian motion
+            last_prices = price_history[-1]
+            new_prices = []
+            for i in range(n_assets):
+                new_price = last_prices[i] * np.exp(
+                    (drift - 0.5 * volatility**2) + 
+                    volatility * correlated_shocks[i]
+                )
+                new_prices.append(new_price)
+            
+            price_history.append(new_prices)
+        
+        # Convert to DataFrame
+        dates = pd.date_range(start=datetime.now(), periods=duration, freq='H')
+        df = pd.DataFrame(price_history, index=dates, columns=[f'Asset_{i}' for i in range(n_assets)])
+        
+        # Calculate returns
+        returns = df.pct_change().dropna()
+        
+        # Calculate portfolio value (equal weights)
+        portfolio_value = (df * (1/n_assets)).sum(axis=1)
+        
+        return {
+            'price_history': df.to_dict(),
+            'returns': returns.to_dict(),
+            'portfolio_value': portfolio_value.to_dict(),
+            'volatility': volatility,
+            'drift': drift,
+            'correlation_matrix': corr_matrix.tolist()
+        }
+
+class BiologicalSystemSimulator(Simulator):
+    def run(self, config: SimulationConfig) -> Dict[str, Any]:
+        system_type = config.parameters.get('system_type', 'gene_regulation')
+        n_components = config.parameters.get('n_components', 10)
+        duration = config.duration
+        
+        if system_type == 'gene_regulation':
+            # Gene regulatory network simulation
+            # Create random regulatory network
+            adj_matrix = np.random.rand(n_components, n_components)
+            adj_matrix = (adj_matrix > 0.7).astype(int)  # Threshold for connections
+            np.fill_diagonal(adj_matrix, 0)  # No self-regulation
+            
+            # Initialize gene expression levels
+            expression = np.random.rand(n_components)
+            
+            # Simulate expression changes
+            expression_history = [expression.copy()]
+            
+            for t in range(1, duration):
+                new_expression = expression.copy()
+                for i in range(n_components):
+                    # Calculate regulatory influence
+                    influence = np.sum(adj_matrix[:, i] * expression)
+                    # Apply sigmoid function to keep values in [0,1]
+                    new_expression[i] = 1 / (1 + np.exp(-influence))
+                
+                expression = new_expression
+                expression_history.append(expression.copy())
+            
+            return {
+                'adjacency_matrix': adj_matrix.tolist(),
+                'expression_history': expression_history,
+                'n_components': n_components
+            }
+        
+        elif system_type == 'predator_prey':
+            # Predator-prey dynamics (Lotka-Volterra)
+            prey_init = config.parameters.get('prey_init', 40)
+            predator_init = config.parameters.get('predator_init', 9)
+            prey_growth = config.parameters.get('prey_growth', 0.1)
+            predation_rate = config.parameters.get('predation_rate', 0.02)
+            predator_efficiency = config.parameters.get('predator_efficiency', 0.01)
+            predator_death = config.parameters.get('predator_death', 0.4)
+            
+            prey_pop = [prey_init]
+            predator_pop = [predator_init]
+            
+            for t in range(1, duration):
+                prey = prey_pop[-1]
+                predator = predator_pop[-1]
+                
+                # Lotka-Volterra equations
+                dprey = prey_growth * prey - predation_rate * prey * predator
+                dpredator = predator_efficiency * predation_rate * prey * predator - predator_death * predator
+                
+                prey_pop.append(max(0, prey + dprey))
+                predator_pop.append(max(0, predator + dpredator))
+            
+            return {
+                'prey_population': prey_pop,
+                'predator_population': predator_pop,
+                'parameters': {
+                    'prey_growth': prey_growth,
+                    'predation_rate': predation_rate,
+                    'predator_efficiency': predator_efficiency,
+                    'predator_death': predator_death
+                }
+            }
+        
+        else:
+            # Default to random system
+            state = np.random.rand(n_components)
+            state_history = [state.copy()]
+            
+            for t in range(1, duration):
+                # Random state transitions
+                transition_matrix = np.random.rand(n_components, n_components)
+                transition_matrix = transition_matrix / transition_matrix.sum(axis=1, keepdims=True)
+                new_state = np.dot(transition_matrix, state)
+                state_history.append(new_state)
+                state = new_state
+            
+            return {
+                'state_history': state_history,
+                'n_components': n_components
+            }
+
+class ClimateModelSimulator(Simulator):
+    def run(self, config: SimulationConfig) -> Dict[str, Any]:
+        model_type = config.parameters.get('model_type', 'energy_balance')
+        duration = config.duration
+        
+        if model_type == 'energy_balance':
+            # Simple energy balance model
+            initial_temp = config.parameters.get('initial_temp', 15.0)  # °C
+            solar_constant = config.parameters.get('solar_constant', 1361.0)  # W/m²
+            albedo = config.parameters.get('albedo', 0.3)
+            emissivity = config.parameters.get('emissivity', 0.6)
+            heat_capacity = config.parameters.get('heat_capacity', 4.2e8)  # J/(m²·K)
+            
+            # Stefan-Boltzmann constant
+            sigma = 5.67e-8  # W/(m²·K⁴)
+            
+            # Simulate temperature changes
+            temp_history = [initial_temp]
+            
+            for t in range(1, duration):
+                current_temp = temp_history[-1]
+                
+                # Incoming solar radiation
+                incoming = solar_constant * (1 - albedo) / 4  # Divided by 4 for sphere
+                
+                # Outgoing longwave radiation
+                outgoing = emissivity * sigma * (current_temp + 273.15)**4
+                
+                # Net energy imbalance
+                net_energy = incoming - outgoing
+                
+                # Temperature change
+                dT = net_energy * 86400 / heat_capacity  # Daily change
+                
+                new_temp = current_temp + dT
+                temp_history.append(new_temp)
+            
+            return {
+                'temperature_history': temp_history,
+                'parameters': {
+                    'initial_temp': initial_temp,
+                    'solar_constant': solar_constant,
+                    'albedo': albedo,
+                    'emissivity': emissivity,
+                    'heat_capacity': heat_capacity
+                }
+            }
+        
+        elif model_type == 'carbon_cycle':
+            # Simplified carbon cycle model
+            initial_atmospheric = config.parameters.get('initial_atmospheric', 800)  # GtC
+            initial_ocean = config.parameters.get('initial_ocean', 38000)  # GtC
+            initial_land = config.parameters.get('initial_land', 2000)  # GtC
+            
+            emissions = config.parameters.get('emissions', 10)  # GtC/year
+            ocean_uptake_rate = config.parameters.get('ocean_uptake_rate', 0.1)
+            land_uptake_rate = config.parameters.get('land_uptake_rate', 0.05)
+            
+            atmospheric_c = [initial_atmospheric]
+            ocean_c = [initial_ocean]
+            land_c = [initial_land]
+            
+            for t in range(1, duration):
+                # Carbon fluxes
+                ocean_uptake = ocean_uptake_rate * atmospheric_c[-1]
+                land_uptake = land_uptake_rate * atmospheric_c[-1]
+                
+                # Update carbon pools
+                new_atmospheric = atmospheric_c[-1] + emissions - ocean_uptake - land_uptake
+                new_ocean = ocean_c[-1] + ocean_uptake
+                new_land = land_c[-1] + land_uptake
+                
+                atmospheric_c.append(new_atmospheric)
+                ocean_c.append(new_ocean)
+                land_c.append(new_land)
+            
+            return {
+                'atmospheric_carbon': atmospheric_c,
+                'ocean_carbon': ocean_c,
+                'land_carbon': land_c,
+                'parameters': {
+                    'emissions': emissions,
+                    'ocean_uptake_rate': ocean_uptake_rate,
+                    'land_uptake_rate': land_uptake_rate
+                }
+            }
+        
+        else:
+            # Default to random climate model
+            temp = config.parameters.get('initial_temp', 15.0)
+            temp_history = [temp]
+            
+            for t in range(1, duration):
+                # Random walk with slight warming trend
+                change = np.random.normal(0.01, 0.1)
+                new_temp = temp + change
+                temp_history.append(new_temp)
+                temp = new_temp
+            
+            return {
+                'temperature_history': temp_history,
+                'parameters': {
+                    'initial_temp': config.parameters.get('initial_temp', 15.0)
+                }
+            }
+
+class NetworkTrafficSimulator(Simulator):
+    def run(self, config: SimulationConfig) -> Dict[str, Any]:
+        n_nodes = config.parameters.get('n_nodes', 10)
+        topology = config.parameters.get('topology', 'random')
+        duration = config.duration
+        traffic_intensity = config.parameters.get('traffic_intensity', 0.5)
+        
+        # Create network topology
+        if topology == 'random':
+            edge_prob = config.parameters.get('edge_probability', 0.2)
+            G = nx.erdos_renyi_graph(n_nodes, edge_prob)
+        elif topology == 'scale_free':
+            G = nx.barabasi_albert_graph(n_nodes, 2)
+        elif topology == 'small_world':
+            G = nx.watts_strogatz_graph(n_nodes, 4, 0.1)
+        else:
+            G = nx.erdos_renyi_graph(n_nodes, 0.2)
+        
+        # Initialize node states
+        node_states = {node: {'load': 0, 'queue': []} for node in G.nodes()}
+        
+        # Simulate traffic
+        traffic_history = []
+        
+        for t in range(duration):
+            # Generate traffic
+            n_packets = int(np.random.poisson(traffic_intensity * n_nodes))
+            
+            # Random source-destination pairs
+            for _ in range(n_packets):
+                src, dst = random.sample(list(G.nodes()), 2)
+                
+                # Find shortest path
+                try:
+                    path = nx.shortest_path(G, src, dst)
+                    
+                    # Update node loads
+                    for node in path:
+                        node_states[node]['load'] += 1
+                        node_states[node]['queue'].append(t)
+                except nx.NetworkXNoPath:
+                    # No path exists
+                    pass
+            
+            # Process queues
+            for node in G.nodes():
+                # Process some packets
+                process_rate = config.parameters.get('process_rate', 0.7)
+                n_process = int(len(node_states[node]['queue']) * process_rate)
+                node_states[node]['queue'] = node_states[node]['queue'][n_process:]
+                
+                # Decay load
+                node_states[node]['load'] *= 0.9
+            
+            # Record state
+            state = {
+                'time': t,
+                'node_loads': {node: node_states[node]['load'] for node in G.nodes()},
+                'queue_lengths': {node: len(node_states[node]['queue']) for node in G.nodes()},
+                'total_packets': n_packets
+            }
+            traffic_history.append(state)
+        
+        return {
+            'traffic_history': traffic_history,
+            'topology': nx.node_link_data(G),
+            'n_nodes': n_nodes,
+            'traffic_intensity': traffic_intensity
+        }
