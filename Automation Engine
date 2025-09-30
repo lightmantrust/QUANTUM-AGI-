@@ -1,0 +1,239 @@
+# self_learning/automation_engine.py
+import asyncio
+import logging
+from typing import Dict, Any, List, Optional, Callable
+from datetime import datetime
+import json
+from abc import ABC, abstractmethod
+
+from .learning_framework import self_learning_core, AutomationRule
+
+logger = logging.getLogger(__name__)
+
+class AutomationTask:
+    def __init__(self, task_id: str, rule_id: str, context: Dict[str, Any]):
+        self.task_id = task_id
+        self.rule_id = rule_id
+        self.context = context
+        self.status = "pending"
+        self.created_at = datetime.now()
+        self.started_at = None
+        self.completed_at = None
+        self.results = None
+        self.error = None
+
+class AutomationEngine:
+    def __init__(self):
+        self.tasks: Dict[str, AutomationTask] = {}
+        self.executors: Dict[str, Callable] = {}
+        self.running_tasks: Dict[str, asyncio.Task] = {}
+        self.task_queue = asyncio.Queue()
+        self.max_concurrent_tasks = 5
+        self.register_default_executors()
+    
+    def register_executor(self, task_type: str, executor: Callable):
+        """Register an executor for a specific task type"""
+        self.executors[task_type] = executor
+        logger.info(f"Registered executor for task type: {task_type}")
+    
+    def register_default_executors(self):
+        """Register default executors"""
+        self.register_executor("ui_action", self._execute_ui_action)
+        self.register_executor("data_manipulation", self._execute_data_manipulation)
+        self.register_executor("system_configuration", self._execute_system_configuration)
+        self.register_executor("workflow_execution", self._execute_workflow_execution)
+    
+    async def submit_task(self, rule_id: str, context: Dict[str, Any]) -> str:
+        """Submit an automation task for execution"""
+        task_id = f"task_{datetime.now().timestamp()}"
+        task = AutomationTask(task_id, rule_id, context)
+        self.tasks[task_id] = task
+        
+        # Add to queue
+        await self.task_queue.put(task)
+        
+        # Process queue if not already running
+        if len(self.running_tasks) < self.max_concurrent_tasks:
+            asyncio.create_task(self._process_queue())
+        
+        return task_id
+    
+    async def _process_queue(self):
+        """Process tasks from the queue"""
+        while not self.task_queue.empty() and len(self.running_tasks) < self.max_concurrent_tasks:
+            task = await self.task_queue.get()
+            
+            # Create task coroutine
+            task_coro = self._execute_task(task)
+            
+            # Track the task
+            self.running_tasks[task.task_id] = task_coro
+            
+            # Execute task
+            asyncio.create_task(self._wrap_task_execution(task_coro, task))
+    
+    async def _wrap_task_execution(self, task_coro: asyncio.Task, task: AutomationTask):
+        """Wrap task execution with error handling"""
+        try:
+            await task_coro
+        except Exception as e:
+            task.status = "error"
+            task.error = str(e)
+            logger.error(f"Task {task.task_id} failed: {str(e)}")
+        finally:
+            # Remove from running tasks
+            if task.task_id in self.running_tasks:
+                del self.running_tasks[task.task_id]
+            
+            # Process next task if available
+            if not self.task_queue.empty():
+                asyncio.create_task(self._process_queue())
+    
+    async def _execute_task(self, task: AutomationTask):
+        """Execute a single automation task"""
+        task.status = "running"
+        task.started_at = datetime.now()
+        
+        try:
+            # Get the rule
+            rule = next((r for r in self.learning_core.automation_rules if r.rule_id == task.rule_id), None)
+            if not rule:
+                raise ValueError(f"Rule not found: {task.rule_id}")
+            
+            # Execute actions
+            results = []
+            for action in rule.actions:
+                action_type = action.get("action_type")
+                executor = self.executors.get(action_type)
+                
+                if not executor:
+                    logger.warning(f"No executor for action type: {action_type}")
+                    continue
+                
+                result = await executor(action, task.context)
+                results.append(result)
+            
+            task.status = "completed"
+            task.completed_at = datetime.now()
+            task.results = results
+            
+            # Record success
+            self.learning_core.record_feedback({
+                "type": "automation_feedback",
+                "rule_id": rule.rule_id,
+                "success": True,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info(f"Task {task.task_id} completed successfully")
+            
+        except Exception as e:
+            task.status = "error"
+            task.error = str(e)
+            task.completed_at = datetime.now()
+            
+            # Record failure
+            self.learning_core.record_feedback({
+                "type": "automation_feedback",
+                "rule_id": task.rule_id,
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.error(f"Task {task.task_id} failed: {str(e)}")
+    
+    async def _execute_ui_action(self, action: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a UI action"""
+        # In a real implementation, this would interact with the UI framework
+        action_type = action.get("action_type")
+        parameters = action.get("parameters", {})
+        
+        # Simulate UI action execution
+        await asyncio.sleep(0.1)  # Simulate processing time
+        
+        return {
+            "action_type": action_type,
+            "status": "success",
+            "result": f"Executed {action_type} with parameters {parameters}"
+        }
+    
+    async def _execute_data_manipulation(self, action: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute data manipulation action"""
+        # In a real implementation, this would manipulate data
+        action_type = action.get("action_type")
+        parameters = action.get("parameters", {})
+        
+        # Simulate data manipulation
+        await asyncio.sleep(0.2)  # Simulate processing time
+        
+        return {
+            "action_type": action_type,
+            "status": "success",
+            "result": f"Manipulated data with {action_type} and parameters {parameters}"
+        }
+    
+    async def _execute_system_configuration(self, action: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute system configuration action"""
+        # In a real implementation, this would configure system settings
+        action_type = action.get("action_type")
+        parameters = action.get("parameters", {})
+        
+        # Simulate configuration
+        await asyncio.sleep(0.3)  # Simulate processing time
+        
+        return {
+            "action_type": action_type,
+            "status": "success",
+            "result": f"Configured system with {action_type} and parameters {parameters}"
+        }
+    
+    async def _execute_workflow_execution(self, action: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute workflow execution action"""
+        # In a real implementation, this would execute a workflow
+        action_type = action.get("action_type")
+        parameters = action.get("parameters", {})
+        
+        # Simulate workflow execution
+        await asyncio.sleep(0.5)  # Simulate processing time
+        
+        return {
+            "action_type": action_type,
+            "status": "success",
+            "result": f"Executed workflow {action_type} with parameters {parameters}"
+        }
+    
+    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+        """Get the status of a task"""
+        task = self.tasks.get(task_id)
+        if not task:
+            return {"status": "error", "message": "Task not found"}
+        
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "created_at": task.created_at.isoformat(),
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "error": task.error,
+            "results": task.results
+        }
+    
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task"""
+        task = self.tasks.get(task_id)
+        if not task or task.status != "running":
+            return False
+        
+        # Cancel the task
+        if task_id in self.running_tasks:
+            self.running_tasks[task_id].cancel()
+            del self.running_tasks[task_id]
+        
+        task.status = "cancelled"
+        task.completed_at = datetime.now()
+        
+        return True
+
+# Global instance
+automation_engine = AutomationEngine()
