@@ -1,2 +1,2 @@
-# QUANTUM-AGI-
-quantum hybrid AGI
+# QSF-AGI-
+quantum financial system hybrid AGI
