@@ -25,6 +25,10 @@ import { ExpandedDigitalAssets } from "./expanded-digital-assets"
 import { CrossChainBridge } from "./cross-chain-bridge"
 import { DeFiProtocolsHub } from "./defi-protocols-hub"
 import { Web3IntegrationPanel } from "./web3-integration-panel"
+import { SMEExpertRegistry } from "./sme-expert-registry"
+import { SMEConsultationInterface } from "./sme-consultation-interface"
+import { SMEQualityAssurance } from "./sme-quality-assurance"
+import { SMEAnalytics } from "./sme-analytics"
 
 export function MainDashboard() {
   const [quantumEnergy, setQuantumEnergy] = useState(87.3)
@@ -156,9 +160,21 @@ export function MainDashboard() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8 gap-1 overflow-x-auto">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-10 gap-1 overflow-x-auto">
             <TabsTrigger value="overview" className="text-xs">
               Overview
+            </TabsTrigger>
+            <TabsTrigger value="sme-experts" className="text-xs">
+              SME Experts
+            </TabsTrigger>
+            <TabsTrigger value="sme-consultation" className="text-xs">
+              Consultation
+            </TabsTrigger>
+            <TabsTrigger value="sme-qa" className="text-xs">
+              QA
+            </TabsTrigger>
+            <TabsTrigger value="sme-analytics" className="text-xs">
+              SME Analytics
             </TabsTrigger>
             <TabsTrigger value="digital-assets" className="text-xs">
               Digital Assets
@@ -248,6 +264,22 @@ export function MainDashboard() {
                 <TransactionMetrics />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="sme-experts">
+            <SMEExpertRegistry />
+          </TabsContent>
+
+          <TabsContent value="sme-consultation">
+            <SMEConsultationInterface />
+          </TabsContent>
+
+          <TabsContent value="sme-qa">
+            <SMEQualityAssurance />
+          </TabsContent>
+
+          <TabsContent value="sme-analytics">
+            <SMEAnalytics />
           </TabsContent>
 
           <TabsContent value="digital-assets">
