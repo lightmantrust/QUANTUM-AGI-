@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -57,9 +58,16 @@ export function MainDashboard() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground">
-                <Zap className="w-6 h-6" />
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/qfs-logo.png"
+                  alt="QFS Logo"
+                  width={48}
+                  height={48}
+                  className="w-12 h-12 object-contain"
+                  priority
+                />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">QFS - Quantum Financial System</h1>
