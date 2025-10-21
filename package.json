@@ -1,0 +1,39 @@
+{
+  "name": "youware-financial-energy",
+  "version": "1.0.0",
+  "description": "Quantum energy-based financial processing system",
+  "main": "src/compliance/mcp_server.py",
+  "scripts": {
+    "build": "echo 'No build step required for Python'",
+    "dev": "uvicorn src.compliance.mcp_server:app --reload --host 0.0.0.0 --port 8000",
+    "start": "uvicorn src.compliance.mcp_server:app --host 0.0.0.0 --port 8000",
+    "test": "python scripts/test_system.py"
+  },
+  "dependencies": {
+    "@vercel/analytics": "latest",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cryptography": "^1.2.3",
+    "fastapi": "^0.0.8",
+    "lucide-react": "^0.454.0",
+    "next": "15.2.4",
+    "numpy": "^0.0.1",
+    "pydantic": "^0.0.1-security",
+    "react": "^19",
+    "react-dom": "^19",
+    "recharts": "latest",
+    "tailwind-merge": "^2.5.5",
+    "tailwindcss-animate": "^1.0.7",
+    "tw-animate-css": "latest",
+    "uvicorn": "^0.0.1-security"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "postcss": "^8.5",
+    "pytest": "^1.0.0",
+    "tailwindcss": "4.1.13",
+    "typescript": "^5"
+  }
+}
